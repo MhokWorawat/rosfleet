@@ -20,10 +20,6 @@ class FleetManagement:
         # ROS Publishers
         self.agv_status_pub = rospy.Publisher('/agv_status', String, queue_size=4, latch=True)
         self.task_pub = rospy.Publisher('/task', String, queue_size=1)
-        self.agv01Emergen_pub = rospy.Publisher('/agv01/Emergen', String, queue_size=1, latch=True)
-        self.agv02Emergen_pub = rospy.Publisher('/agv02/Emergen', String, queue_size=1, latch=True)
-        self.agv03Emergen_pub = rospy.Publisher('/agv03/Emergen', String, queue_size=1, latch=True)
-        self.agv04Emergen_pub = rospy.Publisher('/agv04/Emergen', String, queue_size=1, latch=True)
 
         # ROS Subscribers
         rospy.Subscriber('/agv_status', String, self.ros_subscrib_agv_status)
@@ -33,17 +29,12 @@ class FleetManagement:
         # Set start positions
         self.set_start_positions()
 
-        self.agv01Emergen_pub.publish("on")
-        self.agv02Emergen_pub.publish("off")
-        self.agv03Emergen_pub.publish("off")
-        self.agv04Emergen_pub.publish("off")
-
     def set_start_positions(self):
         position_atstart = {
-            'AGV01': (-3.530, -2.181, 0.000, 0.000, 0.000, 0.707, 0.707),
-            'AGV02': (1.603, -2.326, 0.000, 0.000, 0.000, 0.704, 0.710),
-            'AGV03': (-2.646, 2.552, 0.000, 0.000, 0.000, 0.003, 1.000),
-            'AGV04': (1.564, 3.617, 0.000, 0.000, 0.000, -0.705, 0.709),
+            'agv01': (-3.530, -2.181, 0.000, 0.000, 0.000, 0.707, 0.707),
+            'agv02': (1.603, -2.326, 0.000, 0.000, 0.000, 0.704, 0.710),
+            'agv03': (-2.646, 2.552, 0.000, 0.000, 0.000, 0.003, 1.000),
+            'agv04': (1.564, 3.617, 0.000, 0.000, 0.000, -0.705, 0.709),
         }
 
         for agv_name, position in position_atstart.items():

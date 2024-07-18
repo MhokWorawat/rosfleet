@@ -32,6 +32,7 @@ class FleetManagementUI:
         self.ssh_ips = ["192.168.0.110", "192.168.0.120", "192.168.0.130", "192.168.0.140"]
         self.ssh_users = ["pi01", "pi02", "pi03", "pi04"]
         self.ssh_clients = [None, None, None, None]
+        self.battery_of_agv = [100, 75, 50, 250]
         self.dropdown_vars = []
         self.recent_missions = []
         self.station = ["A", "B", "C", "D", "E", "G"]
@@ -49,12 +50,8 @@ class FleetManagementUI:
             'AGV04': False
         }
 
-        # ROS
+        # ROS environment setup commands
         self.ros_setup_source = "source /opt/ros/noetic/setup.bash && export ROS_MASTER_URI=http://192.168.0.200:11311 && export ROS_HOSTNAME={0} && export ROS_IP={0}"
-        self.battery_AGV01 = 100
-        self.battery_AGV02 = 100
-        self.battery_AGV03 = 100
-        self.battery_AGV04 = 100
 
         # ros_Publisher
         self.agv_status_pub = rospy.Publisher('/agv_status', String, queue_size=4, latch=True)
@@ -62,13 +59,13 @@ class FleetManagementUI:
         self.ros_publish_agv_status(self.agv_status)
 
         # ros_Subscriber
-        self.task_subscriber = None 
-        rospy.Subscriber('/agv_status', String, self.ros_subscrib_agv_status)
-        rospy.Subscriber('/task', String, self.ros_subscrib_task)
-        rospy.Subscriber('/agv01/Emergen', String, self.ros_subscrib_emergency, 'AGV01')
-        rospy.Subscriber('/agv02/Emergen', String, self.ros_subscrib_emergency, 'AGV02')
-        rospy.Subscriber('/agv03/Emergen', String, self.ros_subscrib_emergency, 'AGV03')
-        rospy.Subscriber('/agv04/Emergen', String, self.ros_subscrib_emergency, 'AGV04')
+        self.task_subscriber = None
+        rospy.Subscriber('/task', String, self.ros_subscribe_task)
+        rospy.Subscriber('/agv_status', String, self.ros_subscribe_agv_status)
+        rospy.Subscriber('/agv01/Emergen', String, self.ros_subscribe_emergency, 'AGV01')
+        rospy.Subscriber('/agv02/Emergen', String, self.ros_subscribe_emergency, 'AGV02')
+        rospy.Subscriber('/agv03/Emergen', String, self.ros_subscribe_emergency, 'AGV03')
+        rospy.Subscriber('/agv04/Emergen', String, self.ros_subscribe_emergency, 'AGV04')
 
         # Create widget
         self.create_ssh_buttons()
@@ -133,7 +130,6 @@ class FleetManagementUI:
     def connect_ssh_client(self, AGV_index):
         ip = self.ssh_ips[AGV_index]
         user = self.ssh_users[AGV_index]
-        password = "password"
 
         print(f"Attempting SSH connection to {user}@{ip}")
 
@@ -143,7 +139,7 @@ class FleetManagementUI:
         if self.on_ssh_connect(AGV_index, user, ip, 10):
             self.buttons[AGV_index].config(image=self.buttonSSHon)
             self.current_images[AGV_index] = 1
-            self.ROS_commands(AGV_index)
+            # self.ROS_commands(AGV_index)
             self.agv_status[AGV_index] = "Available"
             self.ros_publish_agv_status(self.agv_status)
             print(f"SSH connection to {user}@{ip} successful")
@@ -215,20 +211,20 @@ class FleetManagementUI:
             
             if AGV_index == 0:   #-----AGV01
                 rosrun_cmds = [
-                    "screen -dmS rosrun rosserial_python serial_node.py /dev/ttyACM0"
+                    "rosrun rosserial_python serial_node.py /dev/ttyACM0"
                 ]
             elif AGV_index == 1: #-----AGV02
                 rosrun_cmds = [
-                    "screen -dmS rosrun rosserial_python serial_node.py /dev/ttyACM0"
+                    "osrun rosserial_python serial_node.py /dev/ttyACM0"
                 ]
             elif AGV_index == 2: #-----AGV03
                 rosrun_cmds = [
-                    "screen -dmS rosrun rosserial_python serial_node.py /dev/ttyACM0"
+                    "rosrun rosserial_python serial_node.py /dev/ttyACM0"
                 ]
             elif AGV_index == 3: #-----AGV04
                 rosrun_cmds = [
-                    "screen -dmS rosrun rosserial_python serial_node.py /dev/ttyACM0",
-                    "screen -dmS lidar roslaunch rplidar_ros rplidar_a1.launch"
+                    "rosrun rosserial_python serial_node.py /dev/ttyACM0",
+                    "lidar roslaunch rplidar_ros rplidar_a1.launch"
                 ]
 
             for cmd in rosrun_cmds:
@@ -367,7 +363,7 @@ class FleetManagementUI:
             self.update_tasks()
             self.update_recent_missions(agv_index + 1)
 
-        self.ros_subscrib_task(on_task_update)
+        self.ros_subscribe_task(on_task_update)
 
     def update_tasks(self):
         coords = {
@@ -430,13 +426,13 @@ class FleetManagementUI:
         self.canvas.delete("Battery_AGV03")
         self.canvas.delete("Battery_AGV04")
 
-        self.update_battery_status(0, 331, 128, self.battery_AGV01)
-        self.update_battery_status(1, 331, 342, self.battery_AGV02)
-        self.update_battery_status(2, 331, 556, self.battery_AGV03)
-        self.update_battery_status(3, 331, 769, self.battery_AGV04)
+        self.update_battery_status(0, 331, 128, self.battery_of_agv[0])
+        self.update_battery_status(1, 331, 342, self.battery_of_agv[1])
+        self.update_battery_status(2, 331, 556, self.battery_of_agv[2])
+        self.update_battery_status(3, 331, 769, self.battery_of_agv[3])
 
     def update_battery_status(self, index, x, y, battery_level):
-        if 75 < battery_level <= 100:
+        if battery_level == 100:
             battery_image = self.imgBattery_100
         elif 50 < battery_level <= 75:
             battery_image = self.imgBattery_75
@@ -450,12 +446,8 @@ class FleetManagementUI:
         self.canvas.create_image(x, y, image=battery_image, anchor="nw", tags=f"Battery_AGV0{index + 1}")
 
     def periodic_battery_update(self):
-        self.battery_AGV01 = max(0, self.battery_AGV01 - 1)
-        self.battery_AGV02 = max(0, self.battery_AGV02 - 1)
-        self.battery_AGV03 = max(0, self.battery_AGV03 - 1)
-        self.battery_AGV04 = max(0, self.battery_AGV04 - 1)
         self.update_battery()
-        self.root.after(3000, self.periodic_battery_update)
+        self.root.after(100, self.periodic_battery_update)
 
     def show_custom_message(self, title, message):
         top = tk.Toplevel(self.root)
@@ -477,18 +469,18 @@ class FleetManagementUI:
             top.grab_release()
             top.grab_set()
     
-    def ros_subscrib_emergency(self, msg, agv_name):
+    def ros_subscribe_emergency(self, msg, agv_name):
         if msg.data == 'on':
             self.emergency_status[agv_name] = True
         elif msg.data == 'off':
             self.emergency_status[agv_name] = False
 
-    def ros_subscrib_agv_status(self, msg):
+    def ros_subscribe_agv_status(self, msg):
         self.agv_status = msg.data.split(', ')
         self.update_status()
         self.update_dropdown_state()
 
-    def ros_subscrib_task(self, callback):
+    def ros_subscribe_task(self, callback):
         if self.task_subscriber is None:
             self.task_subscriber = rospy.Subscriber('/task', String, callback)
 
@@ -503,7 +495,7 @@ class FleetManagementUI:
     def ros_publish_mission(self, mission_info):
         first, last = mission_info
         mission_info_str = f"{first},{last}"
-        rospy.loginfo(mission_info_str)
+        rospy.loginfo(f"mission : ({mission_info_str})")
         self.mission_pub.publish(mission_info_str)
 
 if __name__ == "__main__":

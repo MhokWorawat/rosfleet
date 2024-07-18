@@ -2,7 +2,7 @@
 <package format="2">
   <name>gui_test</name>
   <version>0.0.0</version>
-  <description>The gui package</description>
+  <description>The gui_test package</description>
 
   <!-- One maintainer tag required, multiple allowed, one person per tag -->
   <!-- Example:  -->
@@ -19,7 +19,7 @@
   <!-- Url tags are optional, but multiple are allowed, one per tag -->
   <!-- Optional attribute type can be: website, bugtracker, or repository -->
   <!-- Example: -->
-  <!-- <url type="website">http://wiki.ros.org/gui</url> -->
+  <!-- <url type="website">http://wiki.ros.org/gui_test</url> -->
 
 
   <!-- Author tags are optional, multiple are allowed, one per tag -->

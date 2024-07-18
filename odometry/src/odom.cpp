@@ -27,9 +27,9 @@ int main(int argc, char** argv){
   ros::NodeHandle n;
   ros::Publisher odom_pub = n.advertise<nav_msgs::Odometry>("odom", 50);
 
-  ros::Subscriber subVx = n.subscribe("agv02/LinearX", 100, VelocityX_Callback);
-  ros::Subscriber subVy = n.subscribe("agv02/LinearY", 100, VelocityY_Callback);
-  ros::Subscriber subVz = n.subscribe("agv02/AngularZ", 100, VelocityZ_Callback);
+  ros::Subscriber subVx = n.subscribe("LinearX", 100, VelocityX_Callback);
+  ros::Subscriber subVy = n.subscribe("LinearY", 100, VelocityY_Callback);
+  ros::Subscriber subVz = n.subscribe("AngularZ", 100, VelocityZ_Callback);
   tf::TransformBroadcaster odom_broadcaster;
 
   ros::Time currentTime, lastTime;

@@ -8,9 +8,9 @@ class GUI:
     def __init__(self):
         self.nodeName = 'GUI'
 
-        self.topicVeloX = 'agv01/LinearX'
-        self.topicVeloY = 'agv01/LinearY'
-        self.topicVeloZ = 'agv01/AngularZ'
+        self.topicVeloX = 'agv04/LinearX'
+        self.topicVeloY = 'agv04/LinearY'
+        self.topicVeloZ = 'agv04/AngularZ'
 
         self.topicSpeedL = 'agv01/SpeedL'
         self.topicSpeedR = 'agv01/SpeedR'

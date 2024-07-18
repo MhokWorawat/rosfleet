@@ -1,41 +1,11 @@
 <launch>
 
-    <!-- Run Rviz Navigation --> 
-    <node name="rviz" pkg="rviz" type="rviz" args="-d $(find navigation)/rviz/navigation.rviz" />
+    <group ns="agv04">
+        <node name="map_server" pkg="map_server" type="map_server" args="/home/mark/rosfleet/src/navigation/map/Map01.yaml" />
 
-    <!-- Run the map server --> 
-    <node pkg="map_server" type="map_server" name="map_server" args="/home/mark/Desktop/Map/Map01.yaml"/>
+        <!--- Run odometry setup node --> 
+	    <node pkg="odometry" type="odom" name="odom"   output="screen"/>
 
-    <!-- Start laser scan --> 
-    <node name="slamware_ros_sdk_server_node" pkg="slamware_ros_sdk" type="slamware_ros_sdk_server_node" output="screen">
-        <param name="ip_address"               value="192.168.1.125"/>
-        <param name="angle_compensate"         value="true"/>
-        <param name="fixed_odom_map_tf"        value="true"/>
-        <param name="laser_frame"              value="laser"/>
-        <param name="scan_pub_period"          value="0.1"/>
-        <remap from="slamware_ros_sdk_server_node/scan" to="scan"/>
-    </node>
-
-    <!-- Run odometry -->
-    <node pkg="odometry" type="odom" name="odom" output="screen"/>
-
-    <!-- Static transforms -->
-    <node name="map2odom" pkg="tf" type="static_transform_publisher" args="0 0 0 0 0 0 map odom 100"/>
-    <node name="base2laser" pkg="tf" type="static_transform_publisher" args="0.25 0 0.6 0 0 0 1 base_link laser 100"/>
-
-    <!-- Run AMCL --> 
-    <include file="$(find amcl)/examples/amcl_diff.launch">
-        <param name="transform_tolerance" value="2.0"/>
-    </include>
-
-    <!-- Run move base --> 
-    <node pkg="move_base" type="move_base" name="move_base" respawn="true" output="screen">
-        <rosparam file="$(find navigation)/AGV01config/costmap_common_params.yaml"    command="load" ns="global_costmap"/> 
-        <rosparam file="$(find navigation)/AGV01config/costmap_common_params.yaml"    command="load" ns="local_costmap"/>
-        <rosparam file="$(find navigation)/AGV01config/local_costmap_params.yaml"     command="load"/> 
-        <rosparam file="$(find navigation)/AGV01config/global_costmap_params.yaml"    command="load"/>
-        <rosparam file="$(find navigation)/AGV01config/move_base_params.yaml"         command="load"/>
-        <rosparam file="$(find navigation)/AGV01config/teb_local_planner_params.yaml" command="load"/> 
-    </node>
+    </group>
 
 </launch>
