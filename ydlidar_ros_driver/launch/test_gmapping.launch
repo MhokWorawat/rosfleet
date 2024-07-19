@@ -1,0 +1,26 @@
+<launch>
+    <arg name="lidar_type" value="$(env LIDAR_TYPE)" />
+
+	<arg name="temporalUpdate" default="-1.0" />
+
+	<arg name="scan_topic" default="scan" />
+
+	<arg name="frame_id" default="laser" />
+
+    <include file="$(find ydlidar_ros_driver)/launch/X3.launch"/>
+
+    <include file="$(find rf2o_laser_odometry)/launch/rf2o_laser_odometry.launch">
+		<arg name="scan_topic" value="$(arg scan_topic)" />
+	</include>
+
+    <include file="$(find ydlidar_ros_driver)/launch/gmapping.launch">
+		<arg name="scan_topic" value="$(arg scan_topic)" />
+		<arg name="base_frame" value="$(arg frame_id)" />
+		<arg name="temporalUpdate" value="$(arg temporalUpdate)" />
+	</include>
+	<node pkg="tf" type="static_transform_publisher" name="base_link_to_laser"
+          args="0 0 1 0 0 0  /base_link /$(arg frame_id)  100"/>
+    <node name="rviz" pkg="rviz" type="rviz" args="-d $(find ydlidar_ros_driver)/rviz/test_map.rviz" />
+
+</launch>
+
