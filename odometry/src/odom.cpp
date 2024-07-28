@@ -5,11 +5,11 @@
 
 double X = 0;
 double Y = 0;
-double Z = 0;
+double th = 0;
 
 double Vx = 0;  // .M/s
 double Vy = 0;  // .M/s
-double Vz = 0;  // .M/s
+double Vth = 0;  // .M/s
 
 void VelocityX_Callback(const std_msgs::Float32& LinearX){
   Vx = LinearX.data;
@@ -18,7 +18,7 @@ void VelocityY_Callback(const std_msgs::Float32& LinearY){
   Vy = LinearY.data;
 }
 void VelocityZ_Callback(const std_msgs::Float32& AngularZ){
-  Vz = AngularZ.data;
+  Vth = AngularZ.data;
 }
 
 int main(int argc, char** argv){
@@ -29,14 +29,14 @@ int main(int argc, char** argv){
 
   ros::Subscriber subVx = n.subscribe("LinearX", 100, VelocityX_Callback);
   ros::Subscriber subVy = n.subscribe("LinearY", 100, VelocityY_Callback);
-  ros::Subscriber subVz = n.subscribe("AngularZ", 100, VelocityZ_Callback);
+  ros::Subscriber subVth = n.subscribe("AngularZ", 100, VelocityZ_Callback);
   tf::TransformBroadcaster odom_broadcaster;
 
   ros::Time currentTime, lastTime;
   currentTime = ros::Time::now();
   lastTime = ros::Time::now();
 
-  ros::Rate r(30.0);
+  ros::Rate r(10.0);
   while(n.ok()){
 
     ros::spinOnce();                         // check for incoming messages
@@ -44,16 +44,19 @@ int main(int argc, char** argv){
 
     //compute odometry in a typical way given the velocities of the robot
     double deltaTime = (currentTime - lastTime).toSec();
-    double delta_X = (Vx * cos(Z) - Vy * sin(Z)) * deltaTime;
-    double delta_Y = (Vx * sin(Z) + Vy * cos(Z)) * deltaTime;
-    double delta_Z = Vz * deltaTime;
+    double delta_X = (Vx * cos(th) - Vy * sin(th)) * deltaTime;
+    double delta_Y = (Vx * sin(th) + Vy * cos(th)) * deltaTime;
+    double delta_th = Vth * deltaTime;
 
     X += delta_X;
     Y += delta_Y;
-    Z += delta_Z;
+    th += delta_th;
+
+    // Normalize the angle th to be within the range -π to π
+    th = atan2(sin(th), cos(th));
 
     //since all odometry is 6DOF we'll need a quaternion created from yaw
-    geometry_msgs::Quaternion odom_quat = tf::createQuaternionMsgFromYaw(Z);
+    geometry_msgs::Quaternion odom_quat = tf::createQuaternionMsgFromYaw(th);
 
     //first, we'll publish the transform over tf
     geometry_msgs::TransformStamped odom_trans;
@@ -84,7 +87,7 @@ int main(int argc, char** argv){
     odom.child_frame_id = "base_link";
     odom.twist.twist.linear.x = Vx;
     odom.twist.twist.linear.y = Vy;
-    odom.twist.twist.angular.z = Vz;
+    odom.twist.twist.angular.z = Vth;
 
     //publish the message
     odom_pub.publish(odom);
