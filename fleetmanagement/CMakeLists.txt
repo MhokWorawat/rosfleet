@@ -25,5 +25,6 @@ catkin_install_python(PROGRAMS
   scripts/gui_fleetmanagement.py
   scripts/fleetmanagement.py
   scripts/setposition.py
+  scripts/test.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )

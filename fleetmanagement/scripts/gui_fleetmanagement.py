@@ -2,37 +2,48 @@
 
 import rospy
 from std_msgs.msg import String
-import tkinter as tk
+from nav_msgs.msg import OccupancyGrid
+from geometry_msgs.msg import PoseWithCovarianceStamped
+from detection_msgs.msg import BoundingBoxes
 from tkinter import font as tkFont
 from tkinter import ttk
 from tkinter import TclError
 from PIL import Image, ImageTk
 from functools import partial
-import paramiko
+import tkinter as tk
+import numpy as np
+import subprocess
 import threading
+import signal
+import math
 import time
 import os
 
 class FleetManagementUI:
     def __init__(self, root):
         rospy.init_node('gui_fleet_management', anonymous=True)
+        self.process = subprocess.Popen(["roslaunch", "navigation", "map.launch"])
 
         self.root = root
         self.root.title("Fleet Management")
         self.root.geometry("1846x1042")
 
+        self.root.protocol("WM_DELETE_WINDOW", self.shutdown_ui)
+
         # Setup environment UI
         self.load_environment()
         self.setup_background()
+        root.iconphoto(False, self.Icon)
+
+        # Add MiniMapUI
+        self.minimap = MiniMapUI(self.root)
 
         # Initialize data
         self.buttons = []
         self.labels = []
-        self.current_images = [2, 2, 2, 2]
-        self.ssh_ips = ["192.168.0.110", "192.168.0.120", "192.168.0.130", "192.168.0.140"]
-        self.ssh_users = ["pi01", "pi02", "pi03", "pi04"]
-        self.ssh_clients = [None, None, None, None]
-        self.battery_of_agv = [100, 75, 50, 250]
+        self.current_images = [0, 0, 0, 0]
+        self.processes = [None, None, None, None]
+        self.battery_of_agv = [100, 100, 100, 100]
         self.dropdown_vars = []
         self.recent_missions = []
         self.station = ["A", "B", "C", "D", "E", "G"]
@@ -50,9 +61,6 @@ class FleetManagementUI:
             'AGV04': False
         }
 
-        # ROS environment setup commands
-        self.ros_setup_source = "source /opt/ros/noetic/setup.bash && export ROS_MASTER_URI=http://192.168.0.200:11311 && export ROS_HOSTNAME={0} && export ROS_IP={0}"
-
         # ros_Publisher
         self.agv_status_pub = rospy.Publisher('/agv_status', String, queue_size=4, latch=True)
         self.mission_pub = rospy.Publisher('/mission', String, queue_size=6, latch=True)
@@ -61,14 +69,21 @@ class FleetManagementUI:
         # ros_Subscriber
         self.task_subscriber = None
         rospy.Subscriber('/task', String, self.ros_subscribe_task)
-        rospy.Subscriber('/agv_status', String, self.ros_subscribe_agv_status)
-        rospy.Subscriber('/agv01/Emergen', String, self.ros_subscribe_emergency, 'AGV01')
-        rospy.Subscriber('/agv02/Emergen', String, self.ros_subscribe_emergency, 'AGV02')
-        rospy.Subscriber('/agv03/Emergen', String, self.ros_subscribe_emergency, 'AGV03')
-        rospy.Subscriber('/agv04/Emergen', String, self.ros_subscribe_emergency, 'AGV04')
+        self.emergency_subscribers = {
+            'AGV01': rospy.Subscriber('/agv01/Emergen', String, self.ros_subscribe_emergency, 'AGV01'),
+            'AGV02': rospy.Subscriber('/agv02/Emergen', String, self.ros_subscribe_emergency, 'AGV02'),
+            'AGV03': rospy.Subscriber('/agv03/Emergen', String, self.ros_subscribe_emergency, 'AGV03'),
+            'AGV04': rospy.Subscriber('/agv04/Emergen', String, self.ros_subscribe_emergency, 'AGV04')
+        }
+        self.detection_subscribers = {
+            'AGV01': rospy.Subscriber('/agv01/yolov5/detections', BoundingBoxes, self.ros_subscribe_detection, 'AGV01'),
+            'AGV02': rospy.Subscriber('/agv02/yolov5/detections', BoundingBoxes, self.ros_subscribe_detection, 'AGV02'),
+            'AGV03': rospy.Subscriber('/agv03/yolov5/detections', BoundingBoxes, self.ros_subscribe_detection, 'AGV03'),
+            'AGV04': rospy.Subscriber('/agv04/yolov5/detections', BoundingBoxes, self.ros_subscribe_detection, 'AGV04')
+        }
 
         # Create widget
-        self.create_ssh_buttons()
+        self.create_launch_buttons()
         self.create_dropdown()
         self.create_confirm_button()
 
@@ -79,15 +94,41 @@ class FleetManagementUI:
         self.periodic_battery_update()
         self.update_emergency_status()
 
+        self.detection_images = []
+        self.detection_x = 436
+        self.detection_y = 870
+    
+    def shutdown_ui(self):
+        try:
+            # Kill the launched process
+            if self.process:
+                self.process.terminate()
+                self.process.wait()
+            nodes = subprocess.check_output(['rosnode', 'list']).decode().split()
+
+            # Kill all nodes except /rosout
+            for node in nodes:
+                if node != '/rosout':
+                    os.system(f'rosnode kill {node}')
+                
+            rospy.loginfo("UI and related nodes have been shut down.")
+        except Exception as e:
+            rospy.logerr(f"Error shutting down UI: {e}")
+        finally:
+            self.root.destroy()
+
     def load_environment(self):
         path_file = os.path.dirname(__file__)
         self.font_name = os.path.join(path_file, "../font/Prompt/Prompt-Regular.ttf")
         self.bg_image = Image.open(os.path.join(path_file, "../image/background.png"))
+        self.Icon = ImageTk.PhotoImage(Image.open(os.path.join(path_file, "../image/Icon.png")))
         self.buttonSSHon = ImageTk.PhotoImage(Image.open(os.path.join(path_file, "../image/button_on.png")))
         self.buttonSSHoff = ImageTk.PhotoImage(Image.open(os.path.join(path_file, "../image/button_off.png")))
         self.buttonConfirm = ImageTk.PhotoImage(Image.open(os.path.join(path_file, "../image/button_confirm.png")))
         self.buttonConfirmOn = ImageTk.PhotoImage(Image.open(os.path.join(path_file, "../image/button_confirm_On.png")))
         self.imgEmergency = ImageTk.PhotoImage(Image.open(os.path.join(path_file, "../image/emergency.png")))
+        self.imgObstacle_box = ImageTk.PhotoImage(Image.open(os.path.join(path_file, "../image/obstacle_box.png")))
+        self.imgObstacle_human = ImageTk.PhotoImage(Image.open(os.path.join(path_file, "../image/obstacle_human.png")))
         self.imgBattery_0 = ImageTk.PhotoImage(Image.open(os.path.join(path_file, "../image/battery0%.png")))
         self.imgBattery_25 = ImageTk.PhotoImage(Image.open(os.path.join(path_file, "../image/battery25%.png")))
         self.imgBattery_50 = ImageTk.PhotoImage(Image.open(os.path.join(path_file, "../image/battery50%.png")))
@@ -109,131 +150,107 @@ class FleetManagementUI:
         custom_font = self.get_font(size, weight)
         self.canvas.create_text(x, y, text=text, font=custom_font, fill=color, anchor="nw", tags=tag)
 
-    def create_ssh_buttons(self):
-        self.create_ssh_button(0, 60, 128)
-        self.create_ssh_button(1, 60, 342)
-        self.create_ssh_button(2, 60, 556)
-        self.create_ssh_button(3, 60, 769)
+    def create_launch_buttons(self):
+        self.create_launch_button(0, 60, 128)
+        self.create_launch_button(1, 60, 342)
+        self.create_launch_button(2, 60, 556)
+        self.create_launch_button(3, 60, 769)
 
-    def create_ssh_button(self, index, x, y):
+    def create_launch_button(self, index, x, y):
         button = tk.Label(self.root, image=self.buttonSSHoff, borderwidth=0, highlightthickness=0, bg="#D9D9D9")
         button.place(x=x, y=y)
-        button.bind("<Button-1>", partial(self.toggle_button, index))
+        button.bind("<Button-1>", partial(self.launch_button, index))
         self.buttons.append(button)
 
-    def toggle_button(self, AGV_index, event):
-        if self.current_images[AGV_index] == 2:
-            threading.Thread(target=self.connect_ssh_client, args=(AGV_index,)).start()
+    def launch_button(self, AGV_index, event):
+        if self.current_images[AGV_index] == 0:
+            threading.Thread(target=self.start_launch, args=(AGV_index,)).start()
         else:
-            threading.Thread(target=self.disconnect_ssh_client, args=(AGV_index,)).start()
+            threading.Thread(target=self.stop_launch, args=(AGV_index,)).start()
 
-    def connect_ssh_client(self, AGV_index):
-        ip = self.ssh_ips[AGV_index]
-        user = self.ssh_users[AGV_index]
-
-        print(f"Attempting SSH connection to {user}@{ip}")
-
-        client = paramiko.SSHClient()
-        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-
-        if self.on_ssh_connect(AGV_index, user, ip, 10):
-            self.buttons[AGV_index].config(image=self.buttonSSHon)
-            self.current_images[AGV_index] = 1
-            # self.ROS_commands(AGV_index)
-            self.agv_status[AGV_index] = "Available"
-            self.ros_publish_agv_status(self.agv_status)
-            print(f"SSH connection to {user}@{ip} successful")
-        else:
-            self.agv_status[AGV_index] = "Not connect"
-            self.ros_publish_agv_status(self.agv_status)
-            print(f"SSH connection to AGV{AGV_index + 1} failed")
-            self.show_custom_message("Connection Error", f"Failed to connect to {user}@{ip}")
-
-    def disconnect_ssh_client(self, AGV_index):
-        ip = self.ssh_ips[AGV_index]
-        user = self.ssh_users[AGV_index]
-        client = self.ssh_clients[AGV_index]
-
-        if client:
-            try:
-                # Setup ROS environment variables
-                client.exec_command(self.ros_setup_source.format(self.ssh_ips[AGV_index]))
-                full_command = f"{self.ros_setup_source} && sudo reboot"
-                stdin, stdout, stderr = client.exec_command(full_command)
-                
-                # Print output and error for debugging
-                out = stdout.read().decode()
-                err = stderr.read().decode()
-                print(f"stdout: {out}")
-                print(f"stderr: {err}")
-
-                stdout.channel.recv_exit_status()  # Wait for command to complete
-                print(f"Executed reboot command for {user}@{ip}: sudo reboot")
-
-                # Wait for a bit to ensure command execution
-                time.sleep(1)
-
-                # Disconnect from SSH
-                self.on_ssh_disconnect(AGV_index)
+    def start_launch(self, AGV_index):
+        commands = [
+            "roslaunch navigation agv01_navigation.launch",
+            "roslaunch navigation agv02_navigation.launch",
+            "roslaunch navigation agv03_navigation.launch",
+            "roslaunch navigation agv04_navigation.launch"
+        ]
+        try:
+            process = subprocess.Popen(commands[AGV_index], shell=True, preexec_fn=os.setsid)
+            # Give it a moment to start
+            time.sleep(5)
+            
+            # Check if the process is running
+            if process.poll() is None:
+                self.processes[AGV_index] = process
+                self.current_images[AGV_index] = 1
+                self.buttons[AGV_index].config(image=self.buttonSSHon)
+                self.agv_status[AGV_index] = "Available"
+                self.ros_publish_agv_status(self.agv_status)
+            else:
+                # Process failed to start, clean up
+                self.show_custom_message("Connection Error", f"Failed to connect to AGV{AGV_index + 1}")
+                process.terminate()
+                self.processes[AGV_index] = None
+                self.current_images[AGV_index] = 0
                 self.buttons[AGV_index].config(image=self.buttonSSHoff)
-                self.current_images[AGV_index] = 2
                 self.agv_status[AGV_index] = "Not connect"
                 self.ros_publish_agv_status(self.agv_status)
-                print(f"Disconnected from {user}@{ip}")
-            except Exception as e:
-                print(f"Failed to disconnect from {user}@{ip}: {e}")
-        else:
-            print(f"No SSH client found for {user}@{ip}")
 
-    def on_ssh_connect(self, AGV_index, user, ip, timeout):
-        client = paramiko.SSHClient()
-        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        try:
-            client.connect(ip, username=user, password='password', timeout=timeout)
-            self.ssh_clients[AGV_index] = client
-            return True
         except Exception as e:
-            print(f"Connection to {user}@{ip} failed: {e}")
-            return False
+            print(f"Exception occurred while launching AGV{AGV_index + 1}: {e}")
 
-    def on_ssh_disconnect(self, AGV_index):
-        client = self.ssh_clients[AGV_index]
-        if client:
-            client.close()
-            self.ssh_clients[AGV_index] = None
-            print(f"SSH client closed for {self.ssh_users[AGV_index]}@{self.ssh_ips[AGV_index]}")
-    
-    def ROS_commands(self, AGV_index):
-        client = self.ssh_clients[AGV_index]
-        if client:
-            # Setup ROS environment variables
-            client.exec_command(self.ros_setup_source.format(self.ssh_ips[AGV_index]))
-            
-            if AGV_index == 0:   #-----AGV01
-                rosrun_cmds = [
-                    "rosrun rosserial_python serial_node.py /dev/ttyACM0"
-                ]
-            elif AGV_index == 1: #-----AGV02
-                rosrun_cmds = [
-                    "osrun rosserial_python serial_node.py /dev/ttyACM0"
-                ]
-            elif AGV_index == 2: #-----AGV03
-                rosrun_cmds = [
-                    "rosrun rosserial_python serial_node.py /dev/ttyACM0"
-                ]
-            elif AGV_index == 3: #-----AGV04
-                rosrun_cmds = [
-                    "rosrun rosserial_python serial_node.py /dev/ttyACM0",
-                    "lidar roslaunch rplidar_ros rplidar_a1.launch"
-                ]
+            self.show_custom_message("Connection Error", f"Failed to connect to AGV{AGV_index + 1}")
 
-            for cmd in rosrun_cmds:
-                full_command = f"{self.ros_setup_source.format(self.ssh_ips[AGV_index])} && {cmd}"
-                stdin, stdout, stderr = client.exec_command(full_command)
-                print(stdout.read().decode())
-                print(stderr.read().decode())
-        else:
-            print(f"SSH client is not connected for {self.ssh_users[AGV_index]}@{self.ssh_ips[AGV_index]}")
+            self.processes[AGV_index] = None
+            self.current_images[AGV_index] = 0
+            self.buttons[AGV_index].config(image=self.buttonSSHoff)
+            self.agv_status[AGV_index] = "Not connect"
+            self.ros_publish_agv_status(self.agv_status)
+
+    def stop_launch(self, AGV_index):
+        process = self.processes[AGV_index]
+        if process:
+            os.killpg(os.getpgid(process.pid), signal.SIGTERM)
+            time.sleep(2)
+            if process.poll() is None:
+                os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+                time.sleep(1)
+                if process.poll() is None:
+                    print(f"Process for AGV{AGV_index + 1} may still be running.")
+            else:
+                print(f"Process for AGV{AGV_index + 1} terminated with SIGTERM.")
+
+            self.processes[AGV_index] = None
+
+            # Ensure all related ROS nodes are killed
+            node_names = subprocess.check_output(['rosnode', 'list']).decode('utf-8').split('\n')
+            for node in node_names:
+                if f"agv{AGV_index + 1}" in node:
+                    try:
+                        subprocess.check_call(['rosnode', 'kill', node])
+                    except subprocess.CalledProcessError:
+                        pass
+
+            # Kill any remaining processes related to the AGV
+            try:
+                subprocess.check_call(f"pkill -f agv{AGV_index + 1}", shell=True)
+            except subprocess.CalledProcessError:
+                pass
+
+            # Run rosnode cleanup to remove stale nodes
+            subprocess.check_call('echo y | rosnode cleanup', shell=True)
+            time.sleep(1)
+
+            # Verify rosout is still running
+            node_names = subprocess.check_output(['rosnode', 'list']).decode('utf-8').split('\n')
+            if '/rosout' not in node_names:
+                print("Warning: rosout is not running.")
+
+        self.current_images[AGV_index] = 0
+        self.buttons[AGV_index].config(image=self.buttonSSHoff)
+        self.agv_status[AGV_index] = "Not connect"
+        self.ros_publish_agv_status(self.agv_status)
 
     def create_dropdown(self):
         self.setup_dropdown(1558, 266)
@@ -404,6 +421,21 @@ class FleetManagementUI:
             self.draw_text(1698, 627 + (i * 25), agv, size=12, color="black", weight="normal", tag="recent_missions")
 
         self.draw_text(1698, 627, f'AGV0{recent_agv}', size=12, color="black", weight="normal", tag="recent_missions")
+    
+    def shift_detections(self):
+        self.detection_images = [(x + 220, y, img, agv_id) for (x, y, img, agv_id) in self.detection_images]
+
+    def update_detections(self):
+        self.root.after(100, self.draw_detections)
+
+    def draw_detections(self):
+        self.minimap.map_canvas.delete("detection")
+        
+        for (x, y, img, agv_id) in self.detection_images:
+            self.minimap.map_canvas.create_image(x, y, image=img, anchor=tk.NW, tags="detection")
+            self.minimap.map_canvas.create_text(x + 144, y + 15, text=agv_id, fill="black", font=('Arial', 12, 'bold'), tags="detection")
+        
+        self.minimap.map_canvas.tag_raise("detection")
 
     def update_emergency_status(self):
         coords = {
@@ -469,6 +501,20 @@ class FleetManagementUI:
             top.grab_release()
             top.grab_set()
     
+    def ros_subscribe_detection(self, data, agv_id):
+        detection_image = None
+        for bbox in data.bounding_boxes:
+            if bbox.Class == "people":
+                detection_image = self.imgObstacle_human
+            elif bbox.Class == "box":
+                detection_image = self.imgObstacle_box
+
+            if detection_image:
+                self.shift_detections()
+                self.detection_images.append((self.detection_x, self.detection_y, detection_image, agv_id))
+                self.detection_x += 220
+                self.update_detections()
+    
     def ros_subscribe_emergency(self, msg, agv_name):
         if msg.data == 'on':
             self.emergency_status[agv_name] = True
@@ -477,6 +523,18 @@ class FleetManagementUI:
 
     def ros_subscribe_agv_status(self, msg):
         self.agv_status = msg.data.split(', ')
+        for i, status in enumerate(self.agv_status):
+            agv_name = f'AGV0{i+1}'
+            if status == 'Not connect':
+                # Unsubscribe from emergency topic if status is "Not connect"
+                if self.emergency_subscribers.get(agv_name):
+                    self.emergency_subscribers[agv_name].unregister()
+                    self.emergency_subscribers[agv_name] = None
+            else:
+                # Subscribe to emergency topic if status is not "Not connect" and not already subscribed
+                if not self.emergency_subscribers.get(agv_name):
+                    self.emergency_subscribers[agv_name] = rospy.Subscriber(f'/{agv_name}/Emergen', 
+                        String, self.ros_subscribe_emergency, agv_name)
         self.update_status()
         self.update_dropdown_state()
 
@@ -497,6 +555,115 @@ class FleetManagementUI:
         mission_info_str = f"{first},{last}"
         rospy.loginfo(f"mission : ({mission_info_str})")
         self.mission_pub.publish(mission_info_str)
+
+class MiniMapUI:
+    def __init__(self, parent):
+        self.map_canvas = tk.Canvas(parent, width=880, height=700, highlightthickness=0)
+        self.map_canvas.place(x=431, y=150)
+
+        rospy.Subscriber('/map', OccupancyGrid, self.map_callback)
+        rospy.Subscriber('/amcl_pose', PoseWithCovarianceStamped, self.pose_callback_agv01)
+        rospy.Subscriber('/agv02/amcl_pose', PoseWithCovarianceStamped, self.pose_callback_agv02)
+        rospy.Subscriber('/agv03/amcl_pose', PoseWithCovarianceStamped, self.pose_callback_agv03)
+        rospy.Subscriber('/agv04/amcl_pose', PoseWithCovarianceStamped, self.pose_callback_agv04)
+
+        self.map_data = None
+        self.robot_poses = {}
+
+        self.new_width = 0
+        self.new_height = 0
+        self.x_center = 0
+        self.y_center = 0
+
+        self.load_agv_images()
+
+    def load_agv_images(self):
+        path_file = os.path.dirname(__file__)
+        self.agv_images = {
+            'agv01': ImageTk.PhotoImage(Image.open(os.path.join(path_file, "../image/agv01.png"))),
+            'agv02': ImageTk.PhotoImage(Image.open(os.path.join(path_file, "../image/agv02.png"))),
+            'agv03': ImageTk.PhotoImage(Image.open(os.path.join(path_file, "../image/agv03.png"))),
+            'agv04': ImageTk.PhotoImage(Image.open(os.path.join(path_file, "../image/agv04.png")))
+        }
+
+    def map_callback(self, data):
+        self.map_data = data
+        self.draw_map()
+
+    def pose_callback_agv01(self, data):
+        self.robot_poses['agv01'] = data.pose.pose
+        if self.map_data:
+            self.draw_robots()
+
+    def pose_callback_agv02(self, data):
+        self.robot_poses['agv02'] = data.pose.pose
+        if self.map_data:
+            self.draw_robots()
+
+    def pose_callback_agv03(self, data):
+        self.robot_poses['agv03'] = data.pose.pose
+        if self.map_data:
+            self.draw_robots()
+
+    def pose_callback_agv04(self, data):
+        self.robot_poses['agv04'] = data.pose.pose
+        if self.map_data:
+            self.draw_robots()
+
+    def draw_map(self):
+        if self.map_data:
+            self.map_canvas.delete("map_image")
+            width = self.map_data.info.width
+            height = self.map_data.info.height
+            map_image = np.array(self.map_data.data).reshape((height, width))
+
+            map_image = np.flip(map_image, axis=0)
+
+            map_image_colored = np.zeros((height, width, 3), dtype=np.uint8)
+            map_image_colored[map_image == 0] = [255, 255, 255]
+            map_image_colored[map_image == 100] = [0, 0, 0]
+            map_image_colored[map_image == -1] = [207, 207, 207]
+
+            map_image_pil = Image.fromarray(map_image_colored)
+
+            aspect_ratio = min(880 / width, 700 / height)
+            self.new_width = int(width * aspect_ratio)
+            self.new_height = int(height * aspect_ratio)
+
+            map_image_pil = map_image_pil.resize((self.new_width, self.new_height), Image.LANCZOS)
+            self.map_photo = ImageTk.PhotoImage(image=map_image_pil)
+
+            self.x_center = (880 - self.new_width) // 2
+            self.y_center = (700 - self.new_height) // 2
+
+            self.map_canvas.create_image(self.x_center, self.y_center, anchor=tk.NW, image=self.map_photo, tags="map_image")
+            self.map_canvas.image = self.map_photo
+
+        # Draw the robots after the map
+        self.draw_robots()
+
+    def draw_robots(self):
+        if self.map_data:
+            resolution = self.map_data.info.resolution
+            origin_x = self.map_data.info.origin.position.x
+            origin_y = self.map_data.info.origin.position.y
+
+            aspect_ratio = min(880 / self.map_data.info.width, 700 / self.map_data.info.height)
+
+            for robot_id, pose in self.robot_poses.items():
+                x = (pose.position.x - origin_x) / resolution
+                y = (pose.position.y - origin_y) / resolution
+
+                robot_x = self.x_center + int(x * aspect_ratio)
+                robot_y = self.y_center + int((self.map_data.info.height - y) * aspect_ratio)
+
+                # Remove existing robot image
+                self.map_canvas.delete(robot_id)
+
+                # Draw the robot's image
+                if robot_id in self.agv_images:
+                    self.map_canvas.create_image(robot_x, robot_y, image=self.agv_images[robot_id], anchor=tk.CENTER, tags=robot_id)
+                    self.map_canvas.tag_raise(robot_id)  # Ensure robot is on top layer
 
 if __name__ == "__main__":
     root = tk.Tk()
