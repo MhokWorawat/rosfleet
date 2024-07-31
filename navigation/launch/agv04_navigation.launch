@@ -1,0 +1,54 @@
+<launch>
+    <param name="/use_sim_time" value="false"/>
+
+    <!-- Define the Raspberry Pi as a machine -->
+    <machine name="agv04" user="pi04" address="192.168.0.140" password="password" env-loader="/home/pi04/ros_env.sh"/>
+
+    <group ns="agv04">
+
+        <!-- Run Rviz Navigation -->
+        <node name="rviz" pkg="rviz" type="rviz" args="-d $(find navigation)/rviz/navigation_agv04.rviz"/>
+
+        <!-- Start arduino serial on Raspberry Pi -->
+        <node pkg="rosserial_arduino" type="serial_node.py" name="rosserial" respawn="true" args="_port:=/dev/ttyACM0" machine="agv04"/>
+
+
+        <!-- Start laser scan on Raspberry Pi -->
+        <node name="rplidarNode" pkg="rplidar_ros" type="rplidarNode" output="screen" machine="agv04">
+            <param name="serial_port"       type="string" value="/dev/ttyUSB0"/>
+            <param name="serial_baudrate"   type="int"    value="115200"/>
+            <param name="frame_id"          type="string" value="agv04_laser"/>
+            <param name="inverted"          type="bool"   value="false"/>
+            <param name="angle_compensate"  type="bool"   value="true"/>
+        </node>
+
+        <!-- Run odometry setup node -->
+        <node pkg="odometry" type="agv04_odom" name="agv04_odom" output="screen"/>
+
+        <!-- Run AMCL -->
+        <include file="$(find amcl)/examples/amcl.launch">
+            <param name="odom_model_type"   value="omni"/>
+            <param name="odom_frame_id"     value="agv04_odom"/>
+            <param name="base_frame_id"     value="agv04_base"/>
+            <param name="scan_topic"        value="scan"/>
+        </include>
+
+        <!-- Static transforms -->
+        <node name="map2odom"   pkg="tf" type="static_transform_publisher" args="0 0 0 0 0 0 map agv04_odom 100"/>
+        <node name="base2laser" pkg="tf" type="static_transform_publisher" args="0.08 0 0.15 3.14 0 0 agv04_base agv04_laser 100"/>
+
+        <!-- Run move base -->
+        <node pkg="move_base" type="move_base" name="move_base" respawn="true" output="screen">
+            <rosparam file="$(find navigation)/AGV04config/costmap_common_params.yaml"     command="load" ns="global_costmap"/>
+            <rosparam file="$(find navigation)/AGV04config/costmap_common_params.yaml"     command="load" ns="local_costmap"/>
+            <rosparam file="$(find navigation)/AGV04config/local_costmap_params.yaml"      command="load"/>
+            <rosparam file="$(find navigation)/AGV04config/global_costmap_params.yaml"     command="load"/>
+            <rosparam file="$(find navigation)/AGV04config/move_base_params.yaml"          command="load"/>
+            <rosparam file="$(find navigation)/AGV04config/teb_local_planner_params.yaml"  command="load"/>
+
+            <param name="TrajectoryPlannerROS/meter_scoring" type="bool" value="true"/>
+
+        </node>
+
+    </group>
+</launch>

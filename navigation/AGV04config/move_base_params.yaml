@@ -19,5 +19,3 @@ MoveBaseRos:
 
   clearing_rotation_allowed: false
 
-TrajectoryPlannerROS:
-  meter_scoring: true

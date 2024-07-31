@@ -1,0 +1,52 @@
+<launch>
+    <param name="use_sim_time" value="false"/>
+
+    <!-- Define the Raspberry Pi as a machine -->
+    <machine name="agv01" user="pi01" address="192.168.0.110" password="password" env-loader="/home/pi01/ros_env.sh"/>
+
+    <!-- Run Rviz Navigation -->
+    <node name="rviz" pkg="rviz" type="rviz" args="-d $(find navigation)/rviz/navigation_agv01.rviz"/>
+
+    <!-- Run the map server -->
+    <node name="map_server" pkg="map_server" type="map_server" args="/home/mark/rosfleet/src/navigation/map/Map01.yaml"/>
+
+    <!-- Start arduino serial on Raspberry Pi -->
+    <node pkg="rosserial_arduino" type="serial_node.py" name="rosserial" respawn="false" args="_port:=/dev/ttyACM0" machine="agv01"/>
+
+    <!-- Start laser scan --> 
+    <node name="slamware_ros_sdk_server_node" pkg="slamware_ros_sdk" type="slamware_ros_sdk_server_node" output="screen">
+        <param name="ip_address"           value="192.168.0.115"/>
+        <param name="angle_compensate"     value="true"/>
+        <param name="fixed_odom_map_tf"    value="true"/>
+        <param name="odom_frame"           value="odom"/>
+        <param name="robot_frame"          value="base_link"/>
+        <param name="laser_frame"          value="laser"/>
+        <param name="scan_pub_period"      value="0.1"/>
+        <remap from="slamware_ros_sdk_server_node/scan" to="scan"/>
+        <remap from="slamware_ros_sdk_server_node/odom" to="odom"/>
+    </node>
+
+    <!-- Run AMCL -->
+    <include file="$(find amcl)/examples/amcl.launch">
+        <param name="odom_model_type"  value="diff"/>
+        <param name="odom_frame_id"    value="odom"/>
+        <param name="base_frame_id"    value="base_link"/>
+        <param name="scan_topic"       value="scan"/>
+    </include>
+
+    <!-- Static transforms -->
+    <!-- <node name="map2odom"   pkg="tf" type="static_transform_publisher" args="0 0 0 0 0 0 map odom 50"/> -->
+    <node name="base2laser" pkg="tf" type="static_transform_publisher" args="0.25 0 0.6 0 0 0 base_link laser 100"/>
+
+    <!-- Run move base -->
+    <node pkg="move_base" type="move_base" name="move_base" respawn="true" output="screen">
+        <rosparam file="$(find navigation)/AGV01config/costmap_common_params.yaml" command="load" ns="global_costmap"/>
+        <rosparam file="$(find navigation)/AGV01config/costmap_common_params.yaml" command="load" ns="local_costmap"/>
+        <rosparam file="$(find navigation)/AGV01config/local_costmap_params.yaml"  command="load"/>
+        <rosparam file="$(find navigation)/AGV01config/global_costmap_params.yaml" command="load"/>
+        <rosparam file="$(find navigation)/AGV01config/move_base_params.yaml"         command="load"/>
+        <rosparam file="$(find navigation)/AGV01config/teb_local_planner_params.yaml" command="load"/>
+
+        <param name="TrajectoryPlannerROS/meter_scoring" type="bool" value="true"/>
+    </node>
+</launch>
