@@ -22,7 +22,8 @@ import os
 class FleetManagementUI:
     def __init__(self, root):
         rospy.init_node('gui_fleet_management', anonymous=True)
-        self.process = subprocess.Popen(["roslaunch", "navigation", "map.launch"])
+        self.launch_map_process = subprocess.Popen(["roslaunch", "navigation", "map.launch"])
+        self.fleet_management_process = subprocess.Popen(["rosrun", "fleetmanagement", "fleetmanagement.py"])
 
         self.root = root
         self.root.title("Fleet Management")
@@ -36,7 +37,7 @@ class FleetManagementUI:
         root.iconphoto(False, self.Icon)
 
         # Add MiniMapUI
-        self.minimap = MiniMapUI(self.root)
+        self.minimap = MiniMapUI(self.root, self)
 
         # Initialize data
         self.buttons = []
@@ -46,7 +47,7 @@ class FleetManagementUI:
         self.battery_of_agv = [100, 100, 100, 100]
         self.dropdown_vars = []
         self.recent_missions = []
-        self.station = ["A", "B", "C", "D", "E", "G"]
+        self.station = ["A", "B", "C", "D", "E", "G", "Park 1", "Park 2", "Park 3", "Park 4"]
         self.agv_status = ["Not connect", "Not connect", "Not connect", "Not connect"]
         self.tasks = {
             'AGV01': {'first': ' ', 'last': ' '},
@@ -61,26 +62,29 @@ class FleetManagementUI:
             'AGV04': False
         }
 
-        # ros_Publisher
-        self.agv_status_pub = rospy.Publisher('/agv_status', String, queue_size=4, latch=True)
-        self.mission_pub = rospy.Publisher('/mission', String, queue_size=6, latch=True)
-        self.ros_publish_agv_status(self.agv_status)
-
         # ros_Subscriber
-        self.task_subscriber = None
-        rospy.Subscriber('/task', String, self.ros_subscribe_task)
         self.emergency_subscribers = {
             'AGV01': rospy.Subscriber('/agv01/Emergen', String, self.ros_subscribe_emergency, 'AGV01'),
             'AGV02': rospy.Subscriber('/agv02/Emergen', String, self.ros_subscribe_emergency, 'AGV02'),
             'AGV03': rospy.Subscriber('/agv03/Emergen', String, self.ros_subscribe_emergency, 'AGV03'),
             'AGV04': rospy.Subscriber('/agv04/Emergen', String, self.ros_subscribe_emergency, 'AGV04')
         }
+
         self.detection_subscribers = {
             'AGV01': rospy.Subscriber('/agv01/yolov5/detections', BoundingBoxes, self.ros_subscribe_detection, 'AGV01'),
             'AGV02': rospy.Subscriber('/agv02/yolov5/detections', BoundingBoxes, self.ros_subscribe_detection, 'AGV02'),
             'AGV03': rospy.Subscriber('/agv03/yolov5/detections', BoundingBoxes, self.ros_subscribe_detection, 'AGV03'),
             'AGV04': rospy.Subscriber('/agv04/yolov5/detections', BoundingBoxes, self.ros_subscribe_detection, 'AGV04')
         }
+
+        self.task_subscriber = None
+        rospy.Subscriber('/task', String, self.ros_subscribe_task)
+        rospy.Subscriber('/agv_status', String, self.ros_subscribe_agv_status)
+
+        # ros_Publisher
+        self.agv_status_pub = rospy.Publisher('/agv_status', String, queue_size=4, latch=True)
+        self.mission_pub = rospy.Publisher('/mission', String, queue_size=6, latch=True)
+        self.ros_publish_agv_status(self.agv_status)
 
         # Create widget
         self.create_launch_buttons()
@@ -89,33 +93,82 @@ class FleetManagementUI:
 
         # Update UI with initial data
         self.update_dropdowns()
+
         self.update_tasks()
         self.update_battery()
         self.periodic_battery_update()
         self.update_emergency_status()
 
+        self.detection_coords = {'AGV01': {}, 'AGV02': {}, 'AGV03': {}, 'AGV04': {}}
         self.detection_images = []
         self.detection_x = 436
         self.detection_y = 870
     
     def shutdown_ui(self):
         try:
-            # Kill the launched process
-            if self.process:
-                self.process.terminate()
-                self.process.wait()
-            nodes = subprocess.check_output(['rosnode', 'list']).decode().split()
+            # Kill the launched roslaunch process
+            if self.launch_map_process:
+                self.launch_map_process.terminate()
+                self.launch_map_process.wait()
 
-            # Kill all nodes except /rosout
-            for node in nodes:
-                if node != '/rosout':
-                    os.system(f'rosnode kill {node}')
-                
+            # Kill the fleetmanagement rosrun process
+            if self.fleet_management_process:
+                self.fleet_management_process.terminate()
+                self.fleet_management_process.wait()
+
+            # Kill the remaining processes related to AGV
+            for process in self.processes:
+                if process:
+                    os.killpg(os.getpgid(process.pid), signal.SIGTERM)
+                    time.sleep(2)
+                    if process.poll() is None:
+                        os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+                        time.sleep(1)
+                        if process.poll() is None:
+                            print(f"Process may still be running.")
+                    else:
+                        print(f"Process terminated with SIGTERM.")
+
+            # # Kill all nodes except /rosout
+            # nodes = subprocess.check_output(['rosnode', 'list']).decode().split()
+            # for node in nodes:
+            #     if node != '/rosout':
+            #         os.system(f'rosnode kill {node}')
+            
+            # # Run rosnode cleanup to remove stale nodes
+            # subprocess.check_call('echo y | rosnode cleanup', shell=True)
+            # time.sleep(1)
+
+            # Verify rosout is still running
+            node_names = subprocess.check_output(['rosnode', 'list']).decode('utf-8').split('\n')
+            if '/rosout' not in node_names:
+                print("Warning: rosout is not running.")
+
             rospy.loginfo("UI and related nodes have been shut down.")
         except Exception as e:
             rospy.logerr(f"Error shutting down UI: {e}")
         finally:
             self.root.destroy()
+
+    def show_custom_message(self, title, message):
+        top = tk.Toplevel(self.root)
+        top.title(title)
+        top.geometry("300x150")
+
+        custom_font = self.get_font(12)
+
+        message_label = tk.Label(top, text=message, font=custom_font, wraplength=280)
+        message_label.pack(pady=20, padx=20)
+
+        ok_button = tk.Button(top, text="OK", command=top.destroy, font=custom_font)
+        ok_button.pack(pady=10, padx=10)
+
+        top.update_idletasks()
+        try:
+            top.grab_set()
+        except TclError:
+            top.grab_release()
+            top.grab_set()
 
     def load_environment(self):
         path_file = os.path.dirname(__file__)
@@ -413,6 +466,9 @@ class FleetManagementUI:
             self.canvas.delete(f"{agv}_status")
             self.draw_text(x, y, status, size=13, color="black", weight="normal", tag=f"{agv}_status")
 
+    def get_agv_status(self):
+        return self.agv_status
+
     def update_recent_missions(self, recent_agv):
         self.canvas.delete("recent_missions")
 
@@ -421,21 +477,6 @@ class FleetManagementUI:
             self.draw_text(1698, 627 + (i * 25), agv, size=12, color="black", weight="normal", tag="recent_missions")
 
         self.draw_text(1698, 627, f'AGV0{recent_agv}', size=12, color="black", weight="normal", tag="recent_missions")
-    
-    def shift_detections(self):
-        self.detection_images = [(x + 220, y, img, agv_id) for (x, y, img, agv_id) in self.detection_images]
-
-    def update_detections(self):
-        self.root.after(100, self.draw_detections)
-
-    def draw_detections(self):
-        self.minimap.map_canvas.delete("detection")
-        
-        for (x, y, img, agv_id) in self.detection_images:
-            self.minimap.map_canvas.create_image(x, y, image=img, anchor=tk.NW, tags="detection")
-            self.minimap.map_canvas.create_text(x + 144, y + 15, text=agv_id, fill="black", font=('Arial', 12, 'bold'), tags="detection")
-        
-        self.minimap.map_canvas.tag_raise("detection")
 
     def update_emergency_status(self):
         coords = {
@@ -458,51 +499,78 @@ class FleetManagementUI:
         self.canvas.delete("Battery_AGV03")
         self.canvas.delete("Battery_AGV04")
 
-        self.update_battery_status(0, 331, 128, self.battery_of_agv[0])
-        self.update_battery_status(1, 331, 342, self.battery_of_agv[1])
-        self.update_battery_status(2, 331, 556, self.battery_of_agv[2])
-        self.update_battery_status(3, 331, 769, self.battery_of_agv[3])
+        # Update battery status for each AGV
+        self.update_battery_status(0, 331, 128, self.battery_of_agv[0], self.agv_status[0])
+        self.update_battery_status(1, 331, 342, self.battery_of_agv[1], self.agv_status[1])
+        self.update_battery_status(2, 331, 556, self.battery_of_agv[2], self.agv_status[2])
+        self.update_battery_status(3, 331, 769, self.battery_of_agv[3], self.agv_status[3])
 
-    def update_battery_status(self, index, x, y, battery_level):
-        if battery_level == 100:
-            battery_image = self.imgBattery_100
-        elif 50 < battery_level <= 75:
-            battery_image = self.imgBattery_75
-        elif 25 < battery_level <= 50:
-            battery_image = self.imgBattery_50
-        elif 0 < battery_level <= 25:
-            battery_image = self.imgBattery_25
+    def update_battery_status(self, index, x, y, battery_level, status):
+        if status == "Not connect":
+            return
         else:
-            battery_image = self.imgBattery_0
+            if battery_level == 100:
+                battery_image = self.imgBattery_100
+            elif 50 < battery_level <= 75:
+                battery_image = self.imgBattery_75
+            elif 25 < battery_level <= 50:
+                battery_image = self.imgBattery_50
+            elif 0 < battery_level <= 25:
+                battery_image = self.imgBattery_25
+            else:
+                battery_image = self.imgBattery_0
 
-        self.canvas.create_image(x, y, image=battery_image, anchor="nw", tags=f"Battery_AGV0{index + 1}")
+            self.canvas.create_image(x, y, image=battery_image, anchor="nw", tags=f"Battery_AGV0{index + 1}")
 
     def periodic_battery_update(self):
         self.update_battery()
         self.root.after(100, self.periodic_battery_update)
 
-    def show_custom_message(self, title, message):
-        top = tk.Toplevel(self.root)
-        top.title(title)
-        top.geometry("300x150")
+    def shift_detections(self):
+        # Move existing detections to the next position
+        for idx in range(len(self.detection_images)):
+            x, y, img, agv_id = self.detection_images[idx]
+            self.detection_images[idx] = (x + 220, y, img, agv_id)
 
-        custom_font = self.get_font(12)
+    def draw_detections(self):
+        # Store current detection positions
+        current_detections = {tag: self.canvas.coords(tag) for tag in self.canvas.find_withtag("detection")}
 
-        message_label = tk.Label(top, text=message, font=custom_font, wraplength=280)
-        message_label.pack(pady=20, padx=20)
+        # Determine which tags need to be removed
+        tags_to_remove = set(current_detections.keys())
+        for (x, y, img, agv_id) in self.detection_images:
+            tag = f"detection_{agv_id}_{x}_{y}"
+            if tag in tags_to_remove:
+                tags_to_remove.remove(tag)
+            else:
+                # Remove outdated detections
+                self.canvas.delete(tag)
 
-        ok_button = tk.Button(top, text="OK", command=top.destroy, font=custom_font)
-        ok_button.pack(pady=10, padx=10)
+        # Draw or update detections
+        for i, (x, y, img, agv_id) in enumerate(self.detection_images):
+            tag = f"detection_{agv_id}_{x}_{y}"
+            
+            if self.canvas.find_withtag(tag):
+                # Update existing detection
+                self.canvas.coords(tag, x, y)
+                self.canvas.itemconfig(tag, image=img)
+            else:
+                # Draw new detection
+                self.canvas.create_image(x, y, image=img, anchor="nw", tags=tag)
+                self.canvas.create_text(x + 150, y + 15, text=agv_id, fill="black", font=('Arial', 12, 'bold'), tags=tag)
 
-        top.update_idletasks()
-        try:
-            top.grab_set()
-        except TclError:
-            top.grab_release()
-            top.grab_set()
-    
+        # Raise all detection tags to the top
+        self.canvas.tag_raise("detection")
+
     def ros_subscribe_detection(self, data, agv_id):
         detection_image = None
+        new_detections = []
+        new_detection_found = False
+        detected_objects = [bbox.Class for bbox in data.bounding_boxes]
+
+        if not detected_objects:
+            return
+
         for bbox in data.bounding_boxes:
             if bbox.Class == "people":
                 detection_image = self.imgObstacle_human
@@ -510,10 +578,27 @@ class FleetManagementUI:
                 detection_image = self.imgObstacle_box
 
             if detection_image:
-                self.shift_detections()
-                self.detection_images.append((self.detection_x, self.detection_y, detection_image, agv_id))
-                self.detection_x += 220
-                self.update_detections()
+                tag = f"detection_{agv_id}_{self.detection_x}_{self.detection_y}"
+                if tag not in self.canvas.find_withtag("detection"):
+                    # New detection, so we need to add it
+                    new_detections.append((self.detection_x, self.detection_y, detection_image, agv_id))
+                    new_detection_found = True
+                    self.detection_coords[agv_id][bbox.Class] = (self.detection_x, self.detection_y)
+                    self.detection_x += 220
+                else:
+                    # Existing detection; use the coordinates
+                    existing_x, existing_y = self.detection_coords[agv_id].get(bbox.Class, (self.detection_x, self.detection_y))
+                    new_detections.append((existing_x, existing_y, detection_image, agv_id))
+
+        if new_detection_found:
+            # If a new detection was found, update detection images
+            self.shift_detections()
+            self.detection_images = new_detections
+            self.draw_detections()
+        else:
+            # No new detection, just update the existing positions
+            self.detection_images = new_detections
+            self.draw_detections()
     
     def ros_subscribe_emergency(self, msg, agv_name):
         if msg.data == 'on':
@@ -557,7 +642,8 @@ class FleetManagementUI:
         self.mission_pub.publish(mission_info_str)
 
 class MiniMapUI:
-    def __init__(self, parent):
+    def __init__(self, parent, fleetGUI):
+        self.parent = parent
         self.map_canvas = tk.Canvas(parent, width=880, height=700, highlightthickness=0)
         self.map_canvas.place(x=431, y=150)
 
@@ -567,48 +653,60 @@ class MiniMapUI:
         rospy.Subscriber('/agv03/amcl_pose', PoseWithCovarianceStamped, self.pose_callback_agv03)
         rospy.Subscriber('/agv04/amcl_pose', PoseWithCovarianceStamped, self.pose_callback_agv04)
 
+        self.fleetGUI = fleetGUI
         self.map_data = None
-        self.robot_poses = {}
+        self.robot_poses = {'AGV01': None, 'AGV02': None, 'AGV03': None, 'AGV04': None}
+        self.latest_msgs = {'AGV01': None, 'AGV02': None, 'AGV03': None, 'AGV04': None}
 
         self.new_width = 0
         self.new_height = 0
         self.x_center = 0
         self.y_center = 0
+        self.update_interval = 500  # Update interval in milliseconds
 
         self.load_agv_images()
+        self.parent.after(self.update_interval, self.update_poses)  # Start the periodic update
 
     def load_agv_images(self):
         path_file = os.path.dirname(__file__)
         self.agv_images = {
-            'agv01': ImageTk.PhotoImage(Image.open(os.path.join(path_file, "../image/agv01.png"))),
-            'agv02': ImageTk.PhotoImage(Image.open(os.path.join(path_file, "../image/agv02.png"))),
-            'agv03': ImageTk.PhotoImage(Image.open(os.path.join(path_file, "../image/agv03.png"))),
-            'agv04': ImageTk.PhotoImage(Image.open(os.path.join(path_file, "../image/agv04.png")))
+            'AGV01': ImageTk.PhotoImage(Image.open(os.path.join(path_file, "../image/agv01.png"))),
+            'AGV02': ImageTk.PhotoImage(Image.open(os.path.join(path_file, "../image/agv02.png"))),
+            'AGV03': ImageTk.PhotoImage(Image.open(os.path.join(path_file, "../image/agv03.png"))),
+            'AGV04': ImageTk.PhotoImage(Image.open(os.path.join(path_file, "../image/agv04.png")))
         }
 
     def map_callback(self, data):
         self.map_data = data
         self.draw_map()
+        self.draw_robots()
 
     def pose_callback_agv01(self, data):
-        self.robot_poses['agv01'] = data.pose.pose
-        if self.map_data:
-            self.draw_robots()
+        self.latest_msgs['AGV01'] = data
 
     def pose_callback_agv02(self, data):
-        self.robot_poses['agv02'] = data.pose.pose
-        if self.map_data:
-            self.draw_robots()
+        self.latest_msgs['AGV02'] = data
 
     def pose_callback_agv03(self, data):
-        self.robot_poses['agv03'] = data.pose.pose
-        if self.map_data:
-            self.draw_robots()
+        self.latest_msgs['AGV03'] = data
 
     def pose_callback_agv04(self, data):
-        self.robot_poses['agv04'] = data.pose.pose
+        self.latest_msgs['AGV04'] = data
+
+    def update_poses(self):
         if self.map_data:
+            if self.latest_msgs['AGV01']:
+                self.robot_poses['AGV01'] = self.latest_msgs['AGV01'].pose.pose
+            if self.latest_msgs['AGV02']:
+                self.robot_poses['AGV02'] = self.latest_msgs['AGV02'].pose.pose
+            if self.latest_msgs['AGV03']:
+                self.robot_poses['AGV03'] = self.latest_msgs['AGV03'].pose.pose
+            if self.latest_msgs['AGV04']:
+                self.robot_poses['AGV04'] = self.latest_msgs['AGV04'].pose.pose
             self.draw_robots()
+
+        # Schedule the next update
+        self.parent.after(self.update_interval, self.update_poses)
 
     def draw_map(self):
         if self.map_data:
@@ -639,9 +737,6 @@ class MiniMapUI:
             self.map_canvas.create_image(self.x_center, self.y_center, anchor=tk.NW, image=self.map_photo, tags="map_image")
             self.map_canvas.image = self.map_photo
 
-        # Draw the robots after the map
-        self.draw_robots()
-
     def draw_robots(self):
         if self.map_data:
             resolution = self.map_data.info.resolution
@@ -650,20 +745,30 @@ class MiniMapUI:
 
             aspect_ratio = min(880 / self.map_data.info.width, 700 / self.map_data.info.height)
 
-            for robot_id, pose in self.robot_poses.items():
+            agv_status = self.fleetGUI.get_agv_status()
+
+            for i, (robot_id, pose) in enumerate(self.robot_poses.items()):
+                status = agv_status[i] if i < len(agv_status) else "Not connect"
+                if status != "Available":
+                    self.map_canvas.delete(robot_id)
+                    continue
+
+                if pose is None:
+                    self.map_canvas.delete(robot_id)
+                    continue
+
                 x = (pose.position.x - origin_x) / resolution
                 y = (pose.position.y - origin_y) / resolution
-
                 robot_x = self.x_center + int(x * aspect_ratio)
                 robot_y = self.y_center + int((self.map_data.info.height - y) * aspect_ratio)
 
-                # Remove existing robot image
                 self.map_canvas.delete(robot_id)
 
-                # Draw the robot's image
                 if robot_id in self.agv_images:
                     self.map_canvas.create_image(robot_x, robot_y, image=self.agv_images[robot_id], anchor=tk.CENTER, tags=robot_id)
-                    self.map_canvas.tag_raise(robot_id)  # Ensure robot is on top layer
+                    self.map_canvas.tag_raise(robot_id)
+                else:
+                    rospy.logwarn(f"Pose for {robot_id} is None, skipping drawing for this robot.")
 
 if __name__ == "__main__":
     root = tk.Tk()

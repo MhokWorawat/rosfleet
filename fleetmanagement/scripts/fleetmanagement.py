@@ -27,32 +27,32 @@ class FleetManagement:
         rospy.Subscriber('/task', String, self.ros_subscrib_task)
 
         # Set start positions
-        self.set_start_positions()
+    #     self.set_start_positions()
 
-    def set_start_positions(self):
-        position_atstart = {
-            'agv01': (-3.530, -2.181, 0.000, 0.000, 0.000, 0.707, 0.707),
-            'agv02': (1.603, -2.326, 0.000, 0.000, 0.000, 0.704, 0.710),
-            'agv03': (-2.646, 2.552, 0.000, 0.000, 0.000, 0.003, 1.000),
-            'agv04': (1.564, 3.617, 0.000, 0.000, 0.000, -0.705, 0.709),
-        }
+    # def set_start_positions(self):
+    #     position_atstart = {
+    #         'agv01': (-3.530, -2.181, 0.000, 0.000, 0.000, 0.707, 0.707),
+    #         'agv02': (1.603, -2.326, 0.000, 0.000, 0.000, 0.704, 0.710),
+    #         'agv03': (-2.646, 2.552, 0.000, 0.000, 0.000, 0.003, 1.000),
+    #         'agv04': (1.564, 3.617, 0.000, 0.000, 0.000, -0.705, 0.709),
+    #     }
 
-        for agv_name, position in position_atstart.items():
-            pub = rospy.Publisher(f'/{agv_name}/initialpose', PoseWithCovarianceStamped, queue_size=1)
-            rospy.sleep(0.1)
+    #     for agv_name, position in position_atstart.items():
+    #         pub = rospy.Publisher(f'/{agv_name}/initialpose', PoseWithCovarianceStamped, queue_size=1)
+    #         rospy.sleep(0.1)
 
-            pose = PoseWithCovarianceStamped()
-            pose.header.frame_id = "map"
-            pose.pose.pose.position.x = position[0]
-            pose.pose.pose.position.y = position[1]
-            pose.pose.pose.position.z = position[2]
-            pose.pose.pose.orientation.x = position[3]
-            pose.pose.pose.orientation.y = position[4]
-            pose.pose.pose.orientation.z = position[5]
-            pose.pose.pose.orientation.w = position[6]
+    #         pose = PoseWithCovarianceStamped()
+    #         pose.header.frame_id = "map"
+    #         pose.pose.pose.position.x = position[0]
+    #         pose.pose.pose.position.y = position[1]
+    #         pose.pose.pose.position.z = position[2]
+    #         pose.pose.pose.orientation.x = position[3]
+    #         pose.pose.pose.orientation.y = position[4]
+    #         pose.pose.pose.orientation.z = position[5]
+    #         pose.pose.pose.orientation.w = position[6]
 
-            rospy.loginfo(f"Setting initial pose for {agv_name} to {position}")
-            pub.publish(pose)
+    #         rospy.loginfo(f"Setting initial pose for {agv_name} to {position}")
+    #         pub.publish(pose)
 
     def select_agv_for_task(self, station_first, station_last):
         available_agvs = []
