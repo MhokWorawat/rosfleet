@@ -7,11 +7,15 @@
     <group ns="agv04">
 
         <!-- Run Rviz Navigation -->
-        <node name="rviz" pkg="rviz" type="rviz" args="-d $(find navigation)/rviz/navigation_agv04.rviz"/>
+        <node name="rviz" pkg="rviz" type="rviz" args="-d $(find navigation)/rviz/navigation_agv04.rviz">
+            <remap from="/clicked_point"          to="/agv04/clicked_point"/>
+            <remap from="/cmd_vel"                to="/agv04/cmd_vel"/>
+            <remap from="/initialpose"            to="/agv04/initialpose"/>
+            <remap from="/move_base_simple/goal"  to="/agv04/move_base_simple/goal"/>
+        </node>
 
         <!-- Start arduino serial on Raspberry Pi -->
         <node pkg="rosserial_arduino" type="serial_node.py" name="rosserial" respawn="true" args="_port:=/dev/ttyACM0" machine="agv04"/>
-
 
         <!-- Start laser scan on Raspberry Pi -->
         <node name="rplidarNode" pkg="rplidar_ros" type="rplidarNode" output="screen" machine="agv04">

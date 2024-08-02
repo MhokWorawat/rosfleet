@@ -1,6 +1,6 @@
 MoveBaseRos:
 
-  base_global_planner: navfn/NavfnROS
+  base_global_planner: global_planner/GlobalPlanner
   base_local_planner: teb_local_planner/TebLocalPlannerROS
 
   controller_frequency: 5
@@ -19,3 +19,8 @@ MoveBaseRos:
 
   clearing_rotation_allowed: false
 
+  global_planner:
+    use_dijkstra: false
+    use_a_star: true
+    tolerance: 0.1
+    allow_unknown: true
