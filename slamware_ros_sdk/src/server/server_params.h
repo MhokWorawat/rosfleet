@@ -40,8 +40,6 @@ namespace slamware_ros_sdk {
         float map_sync_once_get_max_wh;
         float map_update_near_robot_half_wh;
 
-        float imu_raw_data_period;
-
         std::string scan_topic;
         std::string odom_topic;
         std::string map_topic;
@@ -52,8 +50,6 @@ namespace slamware_ros_sdk {
 
         std::string vel_control_topic;
         std::string goal_topic;
-
-        std::string imu_raw_data_topic;
 
         ServerParams();
 

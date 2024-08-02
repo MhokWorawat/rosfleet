@@ -45,8 +45,6 @@ namespace slamware_ros_sdk {
         map_sync_once_get_max_wh = 100.f;
         map_update_near_robot_half_wh = 8.0f;
 
-        imu_raw_data_period = 0.05f;
-
         scan_topic = "scan";
         odom_topic = "odom";
         map_topic = "map";
@@ -57,8 +55,6 @@ namespace slamware_ros_sdk {
 
         vel_control_topic = "/cmd_vel";
         goal_topic = "/move_base_simple/goal";
-
-        imu_raw_data_topic = "imu_raw_data";
     }
 
     void ServerParams::setBy(const ros::NodeHandle& nhRos)
@@ -89,8 +85,6 @@ namespace slamware_ros_sdk {
         nhRos.getParam("map_sync_once_get_max_wh", map_sync_once_get_max_wh);
         nhRos.getParam("map_update_near_robot_half_wh", map_update_near_robot_half_wh);
 
-        nhRos.getParam("imu_raw_data_period", imu_raw_data_period);
-
         nhRos.getParam("scan_topic", scan_topic);
         nhRos.getParam("odom_topic", odom_topic);
         nhRos.getParam("map_topic", map_topic);
@@ -102,7 +96,6 @@ namespace slamware_ros_sdk {
         nhRos.getParam("vel_control_topic", vel_control_topic);
         nhRos.getParam("goal_topic", goal_topic);
 
-        nhRos.getParam("imu_raw_data_topic", imu_raw_data_topic);
     }
 
     //////////////////////////////////////////////////////////////////////////

@@ -450,30 +450,6 @@ namespace slamware_ros_sdk {
         fromRosOptionalMsg(rosMsg.mvmt_type, sltcVal.recoverMovementType);
     }
 
-    void MsgConvert<sensor_msgs::Imu, rpos::core::IMURawADCData>::toRos(const sltc_val_t& sltcVal, ros_msg_t& rosMsg)
-    {
-        rosMsg.linear_acceleration.x = sltcVal.acc_x * 9.8 * 2 / 32768;
-        rosMsg.linear_acceleration.y = sltcVal.acc_x * 9.8 * 2 / 32768;
-        rosMsg.linear_acceleration.z = sltcVal.acc_x * 9.8 * 2 / 32768;
-        rosMsg.angular_velocity.x = sltcVal.gyro_x * 500 * 180 / M_PI / 32768;
-        rosMsg.angular_velocity.y = sltcVal.gyro_y * 500 * 180 / M_PI / 32768;
-        rosMsg.angular_velocity.z = sltcVal.gyro_z * 500 * 180 / M_PI / 32768;
-
-        rosMsg.header.stamp.nsec = sltcVal.timestamp;
-    }
-
-    void MsgConvert<sensor_msgs::Imu, rpos::core::IMURawADCData>::toSltc(const ros_msg_t& rosMsg, sltc_val_t& sltcVal)
-    {
-        sltcVal.acc_x = rosMsg.linear_acceleration.x * 32768 / 2 / 9.8;
-        sltcVal.acc_y = rosMsg.linear_acceleration.y * 32768 / 2 / 9.8;
-        sltcVal.acc_z = rosMsg.linear_acceleration.z * 32768 / 2 / 9.8;
-        sltcVal.gyro_x = rosMsg.angular_velocity.x * 32768 * M_PI / 180 / 500;
-        sltcVal.gyro_y = rosMsg.angular_velocity.y * 32768 * M_PI / 180 / 500;
-        sltcVal.gyro_z = rosMsg.angular_velocity.z * 32768 * M_PI / 180 / 500;
-
-        sltcVal.timestamp = rosMsg.header.stamp.nsec;
-    }
-
     //////////////////////////////////////////////////////////////////////////
     
 }

@@ -81,43 +81,43 @@ namespace slamware_ros_sdk {
 
     void ServerRobotPoseWorker::doPerform(slamware_platform_t& pltfm)
     {
-        const auto& srvParams = serverParams();
-        auto& tfBrdcst = tfBroadcaster();
-        auto wkDat = mutableWorkData();
+        // const auto& srvParams = serverParams();
+        // auto& tfBrdcst = tfBroadcaster();
+        // auto wkDat = mutableWorkData();
 
-        // send TF transform
-        if (srvParams.fixed_odom_map_tf) // only for debug rosrun
-        {
-            tf::Transform tfIdenty;
-            tfIdenty.setOrigin(tf::Vector3 (0.0, 0.0, 0.0));
-            tfIdenty.setRotation(tf::Quaternion(0, 0, 0, 1));
+        // // send TF transform
+        // if (srvParams.fixed_odom_map_tf) // only for debug rosrun
+        // {
+        //     tf::Transform tfIdenty;
+        //     tfIdenty.setOrigin(tf::Vector3 (0.0, 0.0, 0.0));
+        //     tfIdenty.setRotation(tf::Quaternion(0, 0, 0, 1));
 
-            tfBrdcst.sendTransform(tf::StampedTransform(tfIdenty, ros::Time::now(), srvParams.map_frame, srvParams.odom_frame));
-            //tfBrdcst.sendTransform(tf::StampedTransform(tfIdenty, ros::Time::now(), srvParams.robot_frame, srvParams.laser_frame));
-        }
+        //     tfBrdcst.sendTransform(tf::StampedTransform(tfIdenty, ros::Time::now(), srvParams.map_frame, srvParams.odom_frame));
+        //     //tfBrdcst.sendTransform(tf::StampedTransform(tfIdenty, ros::Time::now(), srvParams.robot_frame, srvParams.laser_frame));
+        // }
 
-        // check power
-        //int battPercentage = pltfm.getBatteryPercentage();
-        //if (battPercentage < 10)
-        //    std::cout << "lower power!! Battery: " << battPercentage << "%." << std::endl;
+        // // check power
+        // //int battPercentage = pltfm.getBatteryPercentage();
+        // //if (battPercentage < 10)
+        // //    std::cout << "lower power!! Battery: " << battPercentage << "%." << std::endl;
 
-        //const rpos::core::Location location = pltfm.getLocation();
-        const rpos::core::Pose robotPose = pltfm.getPose();
-        wkDat->robotPose = robotPose;
+        // //const rpos::core::Location location = pltfm.getLocation();
+        // const rpos::core::Pose robotPose = pltfm.getPose();
+        // wkDat->robotPose = robotPose;
 
-        // publish odom transform
-        tf::Transform transform;
-        transform.setOrigin(tf::Vector3(robotPose.x(), robotPose.y(), 0.0));
-        tf::Quaternion q = tf::createQuaternionFromYaw(robotPose.yaw());
-        transform.setRotation(q);
-        tfBrdcst.sendTransform(tf::StampedTransform(transform, ros::Time::now(), srvParams.odom_frame, srvParams.robot_frame));
+        // // publish odom transform
+        // tf::Transform transform;
+        // transform.setOrigin(tf::Vector3(robotPose.x(), robotPose.y(), 0.0));
+        // tf::Quaternion q = tf::createQuaternionFromYaw(robotPose.yaw());
+        // transform.setRotation(q);
+        // tfBrdcst.sendTransform(tf::StampedTransform(transform, ros::Time::now(), srvParams.odom_frame, srvParams.robot_frame));
 
-        // send TF transform
-        nav_msgs::Odometry msgRobotPose;
-        msgRobotPose.header.frame_id = srvParams.odom_frame;
-        msgRobotPose.header.stamp = ros::Time::now();
-        sltcToRosMsg(robotPose, msgRobotPose.pose.pose);
-        pubRobotPose_.publish(msgRobotPose);
+        // // send TF transform
+        // nav_msgs::Odometry msgRobotPose;
+        // msgRobotPose.header.frame_id = srvParams.odom_frame;
+        // msgRobotPose.header.stamp = ros::Time::now();
+        // sltcToRosMsg(robotPose, msgRobotPose.pose.pose);
+        // pubRobotPose_.publish(msgRobotPose);
     }
 
     //////////////////////////////////////////////////////////////////////////
@@ -464,13 +464,13 @@ namespace slamware_ros_sdk {
         msgScan.scan_time = dblScanDur;
         msgScan.time_increment = dblScanDur / (double)(msgScan.ranges.size() - 1);
 
-        {
-            tf::Transform laserTrans;
-            laserTrans.setOrigin(tf::Vector3(laserPose.x(), laserPose.y(), 0.0));
-            tf::Quaternion qLaserTrans = tf::createQuaternionFromYaw(laserPose.yaw());
-            laserTrans.setRotation(qLaserTrans);
-            tfBrdcst.sendTransform(tf::StampedTransform(laserTrans, startScanTime, srvParams.map_frame, srvParams.laser_frame));
-        }
+        // {
+        //     tf::Transform laserTrans;
+        //     laserTrans.setOrigin(tf::Vector3(laserPose.x(), laserPose.y(), 0.0));
+        //     tf::Quaternion qLaserTrans = tf::createQuaternionFromYaw(laserPose.yaw());
+        //     laserTrans.setRotation(qLaserTrans);
+        //     tfBrdcst.sendTransform(tf::StampedTransform(laserTrans, startScanTime, srvParams.map_frame, srvParams.laser_frame));
+        // }
         pubLaserScan_.publish(msgScan);
     }
 
@@ -1001,43 +1001,6 @@ namespace slamware_ros_sdk {
                 return;
             } 
         }
-    }
-
-    //////////////////////////////////////////////////////////////////////////
-    
-    ServerImuRawDataWorker::ServerImuRawDataWorker(SlamwareRosSdkServer* pRosSdkServer
-        , const std::string& wkName
-        , const boost::chrono::milliseconds& triggerInterval
-        )
-        : ServerWorkerBase(pRosSdkServer, wkName, triggerInterval)
-    {
-        const auto& srvParams = serverParams();
-        auto& nhRos = rosNodeHandle();
-        pubImuRawData_ = nhRos.advertise<sensor_msgs::Imu>(srvParams.imu_raw_data_topic, 10);
-    }
-
-    ServerImuRawDataWorker::~ServerImuRawDataWorker()
-    {
-        //
-    }
-
-    bool ServerImuRawDataWorker::reinitWorkLoop(slamware_platform_t& pltfm)
-    {
-        if (!this->super_t::reinitWorkLoop(pltfm))
-            return false;
-
-        isWorkLoopInitOk_ = true;
-        return isWorkLoopInitOk_;
-    }
-
-    void ServerImuRawDataWorker::doPerform(slamware_platform_t& pltfm)
-    {
-        rpos::core::IMURawADCData imuRawDataSltc = pltfm.getImuRawADCData();
-
-        sensor_msgs::Imu imuRawDataRos;
-        sltcToRosMsg(imuRawDataSltc, imuRawDataRos);
-
-        pubImuRawData_.publish(imuRawDataRos);
     }
 
     //////////////////////////////////////////////////////////////////////////

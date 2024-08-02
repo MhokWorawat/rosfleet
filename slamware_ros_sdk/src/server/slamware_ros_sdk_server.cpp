@@ -266,11 +266,6 @@ namespace slamware_ros_sdk {
             }
 
             {
-                auto svrWk = boost::make_shared<ServerImuRawDataWorker>(this, "ImuRawData", sfConvFloatSecToBoostMs_(params_.imu_raw_data_period)); 
-                serverWorkers_.push_back(svrWk);
-            }
-
-            {
                 auto svrWk = boost::make_shared<RosConnectWorker>(this, "RosConnectWorker", sfConvFloatSecToBoostMs_(params_.robot_basic_state_pub_period));
                 serverWorkers_.push_back(svrWk);
             }

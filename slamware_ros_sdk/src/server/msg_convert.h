@@ -3,7 +3,6 @@
 
 #include <ros/ros.h>
 #include <tf/message_filter.h>
-#include <sensor_msgs/Imu.h>
 #include <ros/time.h>
 
 #include <slamware_ros_sdk/utils.h>
@@ -309,17 +308,6 @@ namespace slamware_ros_sdk {
     public:
         typedef LocalizationOptions                                            ros_msg_t;
         typedef rpos::features::motion_planner::RecoverLocalizationOptions     sltc_val_t;
-    public:
-        static void toRos(const sltc_val_t& sltcVal, ros_msg_t& rosMsg);
-        static void toSltc(const ros_msg_t& rosMsg, sltc_val_t& sltcVal);
-    };
-
-    template<>
-    struct MsgConvert<sensor_msgs::Imu, rpos::core::IMURawADCData>
-    {
-    public:
-        typedef sensor_msgs::Imu                       ros_msg_t;
-        typedef rpos::core::IMURawADCData                  sltc_val_t;
     public:
         static void toRos(const sltc_val_t& sltcVal, ros_msg_t& rosMsg);
         static void toSltc(const ros_msg_t& rosMsg, sltc_val_t& sltcVal);

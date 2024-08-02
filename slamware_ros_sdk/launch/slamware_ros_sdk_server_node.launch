@@ -20,16 +20,16 @@
   <param name = "path_pub_period"          value = "0.05"/>
   <param name=  "imu_raw_data_period"      value = "0.05"/>
 
-  <param name = "cmd_vel"                 value = "cmd_vel"/>
-  <param name = "move_base_simple/goal"   value = "move_base_simple/goal"/>
+  <param name = "cmd_vel"                  value = "cmd_vel"/>
+  <param name = "move_base_simple/goal"    value = "move_base_simple/goal"/>
   <param name = "scan"                     value = "scan"/>
   <param name = "odom"                     value = "odom"/>
   <param name = "map"                      value = "map"/>
   <param name = "map_metadata"             value = "map_metadata"/>
   <param name = "global_plan_path"         value = "global_plan_path"/>
   <!-- topic remap /-->
-  <remap from = "cmd_vel"                   to = "cmd_vel"/>
-  <remap from = "move_base_simple/goal"     to = "$(arg move_base_goal_topic)"/>
+  <remap from = "cmd_vel"                    to = "cmd_vel"/>
+  <remap from = "move_base_simple/goal"      to = "$(arg move_base_goal_topic)"/>
   <remap from = "scan"                       to = "scan"/>
   <remap from = "odom"                       to = "odom"/>
 
@@ -38,7 +38,7 @@
   <remap from = "global_plan_path"           to = "global_plan_path"/>
   </node>
 
-  <node name="map2odom" pkg="tf" type="static_transform_publisher" args="0 0 0 0 0 0 1 slamware_map odom 100"/>
+  <node name="map2odom"   pkg="tf" type="static_transform_publisher" args="0 0 0 0 0 0 1 slamware_map odom 100"/>
   <node name="base2laser" pkg="tf" type="static_transform_publisher" args="0 0 0 0 0 0 1 base_link laser 100"/>
 
 

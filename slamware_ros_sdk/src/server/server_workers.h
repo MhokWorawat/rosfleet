@@ -10,7 +10,6 @@
 #include <nav_msgs/Path.h>
 #include <geometry_msgs/Twist.h>
 #include <nav_msgs/Odometry.h>
-#include <sensor_msgs/Imu.h>
 #include "std_msgs/String.h"
 
 namespace slamware_ros_sdk {
@@ -308,29 +307,6 @@ namespace slamware_ros_sdk {
 
     private:
         boost::shared_ptr<rpos::robot_platforms::objects::SystemEventProvider> systemEventProvider_;
-    };
-
-    //////////////////////////////////////////////////////////////////////////
-    
-    class ServerImuRawDataWorker: public ServerWorkerBase
-    {
-    public:
-        typedef ServerWorkerBase          super_t;
-	
-    public:
-        ServerImuRawDataWorker(SlamwareRosSdkServer* pRosSdkServer
-            , const std::string& wkName
-            , const boost::chrono::milliseconds& triggerInterval
-            );
-        virtual ~ServerImuRawDataWorker();
-
-        virtual bool reinitWorkLoop(slamware_platform_t& pltfm);
-
-    protected:
-        virtual void doPerform(slamware_platform_t& pltfm);
-
-    private:
-        ros::Publisher pubImuRawData_;
     };
 
     //////////////////////////////////////////////////////////////////////////
