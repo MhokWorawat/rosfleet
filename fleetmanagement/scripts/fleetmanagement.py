@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 
 import rospy
-import yaml
 from std_msgs.msg import String
-from nav_msgs.srv import GetPlan
+from nav_msgs.srv import GetPlan, GetPlanRequest
 from nav_msgs.msg import Path
 from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped
-import os
+import math
 
 class FleetManagement:
     def __init__(self):
@@ -15,23 +14,22 @@ class FleetManagement:
         self.agv_status = ["Not connect", "Not connect", "Not connect", "Not connect"]
 
         self.agv_poses = {
-            'AGV01': (0, 0),
-            'AGV02': (0, 0),
-            'AGV03': (0, 0),
-            'AGV04': (0, 0)
+            'AGV01': (0, 0, 0, 0, 0, 0, 0),
+            'AGV02': (0, 0, 0, 0, 0, 0, 0),
+            'AGV03': (0, 0, 0, 0, 0, 0, 0),
+            'AGV04': (0, 0, 0, 0, 0, 0, 0)
         }
-
         self.station_coordinates = {
-            'A': (-2.793, -3.458),
-            'B': (0.907, -3.544),
-            'C': (0.198, -0.259),
-            'D': (1.644, 1.393),
-            'E': (-3.492, 1.483),
-            'G': (0.163, 3.282),
-            'P1': (1.0, -10.0),
-            'P2': (17.75, -7.25),
-            'P3': (1.0, -1.0),
-            'P4': (25.0, -10.0)
+            'A': (2.500, -5.500, 0.000, 0.000, 0.000, 0.707, 0.707),
+            'B': (7.000, -1.500, 0.000, 0.000, 0.000, 0.000, 1.000),
+            'C': (13.500, -9.300, 0.000, 0.000, 0.000, 0.000, 1.000),
+            'D': (7.500, -10.500, 0.000, 0.000, 0.000, -0.707, 0.707),
+            'E': (20.000, -10.500, 0.000, 0.000, 0.000, 0.000, 1.000),
+            'G': (18.000, -21.000, 0.000, 0.000, 0.000, 1.000, 0.000),
+            'Park1': (1.000, -10.000, 0.000, 0.000, 0.000, 0.000, 1.000),
+            'Park2': (17.750, -7.250, 0.000, 0.000, 0.000, -0.707, 0.707),
+            'Park3': (1.000, -1.000, 0.000, 0.000, 0.000, 0.000, 1.000),
+            'Park4': (25.000, -10.000, 0.000, 0.000, 0.000, -1.000, 0.000)
         }
 
         # ROS Publishers
@@ -47,17 +45,41 @@ class FleetManagement:
         rospy.Subscriber('/mission', String, self.ros_subscrib_mission)
 
     def agv01_pose_callback(self, msg):
-        self.agv_poses['AGV01'] = (msg.pose.pose.position.x, msg.pose.pose.position.y)
+        self.agv_poses['AGV01'] = (msg.pose.pose.position.x, 
+                                   msg.pose.pose.position.y,
+                                   msg.pose.pose.position.z,
+                                   msg.pose.pose.orientation.x,
+                                   msg.pose.pose.orientation.y,
+                                   msg.pose.pose.orientation.z,
+                                   msg.pose.pose.orientation.w)
 
     def agv02_pose_callback(self, msg):
-        self.agv_poses['AGV02'] = (msg.pose.pose.position.x, msg.pose.pose.position.y)
+        self.agv_poses['AGV02'] = (msg.pose.pose.position.x, 
+                                   msg.pose.pose.position.y,
+                                   msg.pose.pose.position.z,
+                                   msg.pose.pose.orientation.x,
+                                   msg.pose.pose.orientation.y,
+                                   msg.pose.pose.orientation.z,
+                                   msg.pose.pose.orientation.w)
 
     def agv03_pose_callback(self, msg):
-        self.agv_poses['AGV03'] = (msg.pose.pose.position.x, msg.pose.pose.position.y)
+        self.agv_poses['AGV03'] = (msg.pose.pose.position.x, 
+                                   msg.pose.pose.position.y,
+                                   msg.pose.pose.position.z,
+                                   msg.pose.pose.orientation.x,
+                                   msg.pose.pose.orientation.y,
+                                   msg.pose.pose.orientation.z,
+                                   msg.pose.pose.orientation.w)
 
     def agv04_pose_callback(self, msg):
-        self.agv_poses['AGV04'] = (msg.pose.pose.position.x, msg.pose.pose.position.y)
-
+        self.agv_poses['AGV04'] = (msg.pose.pose.position.x, 
+                                   msg.pose.pose.position.y,
+                                   msg.pose.pose.position.z,
+                                   msg.pose.pose.orientation.x,
+                                   msg.pose.pose.orientation.y,
+                                   msg.pose.pose.orientation.z,
+                                   msg.pose.pose.orientation.w)
+        
     def ros_subscrib_agv_status(self, msg):
         rospy.loginfo(f"Received AGV status: {msg.data}")
         status_list = msg.data.split(', ')
@@ -82,136 +104,95 @@ class FleetManagement:
                 available_agvs.append(f'AGV{i + 1:02}')
 
         rospy.loginfo(f"Available AGVs: {available_agvs}")
-
         if available_agvs:
+            if station_first in self.station_coordinates:
+                station_first_coords = self.station_coordinates[station_first]
+            else:
+                rospy.loginfo(f"Station {station_first} coordinates not found.")
+                return
+
             if selected_agv == "Automatic":
                 if len(available_agvs) == 1:
                     closest_agv = available_agvs[0]
                     rospy.loginfo(f"Only one AGV available: {closest_agv}")
                 else:
-                    if station_first in self.station_coordinates:
-                        station_first_coords = self.station_coordinates[station_first]
-                    else:
-                        rospy.loginfo(f"Station {station_first} coordinates not found.")
-                        return
-
-                    # Calculate the distance for each AGV
-                    min_distance = float('inf')
-                    closest_agv = None
-
-                    for agv in available_agvs:
-                        agv_position = self.agv_poses[agv]
-                        distance = self.calculate_path_distance(agv_position, station_first_coords)
-                        if distance < min_distance:
-                            min_distance = distance
-                            closest_agv = agv
-
-                    if closest_agv is not None:
-                        rospy.loginfo(f"Closest AGV: {closest_agv}")
-                    else:
-                        rospy.loginfo("No AGVs available for the task.")
-                        return
+                    closest_agv, distances = self.get_closest_agv(available_agvs, station_first_coords)
+                    rospy.loginfo(f"Closest :{closest_agv} distances: {distances}")
             else:
                 closest_agv = selected_agv
-                rospy.loginfo(f"Selected AGV: {closest_agv}")
 
-            # Send the task
-            task_info = f"{closest_agv}, {station_first}, {station_last}"
-            self.task_pub.publish(task_info)
-            rospy.loginfo(f"Task assigned to {closest_agv}: {station_first} -> {station_last}")
-
-            # Update AGV status to "Executing mission"
+            self.publish_task(closest_agv, station_first, station_last)
             self.agv_status[int(closest_agv[-2:]) - 1] = "Executing mission"
             self.publish_agv_status()
         else:
             rospy.loginfo("No AGVs available for the task.")
 
-    def calculate_path_distance(self, start, goal):
-        rospy.wait_for_service('/move_base/make_plan')
+    def get_closest_agv(self, available_agvs, target_coords):
+        min_distance = float('inf')
+        closest_agv = None
+        distances = {}
+
+        for agv in available_agvs:
+            start_pose = self.create_pose_stamped(self.agv_poses[agv])
+            goal_pose = self.create_pose_stamped(target_coords)
+            path_distance = self.calculate_path_length(start_pose, goal_pose, agv.lower())
+
+            distances[agv] = path_distance
+            rospy.loginfo(f"{agv} -> {target_coords}: {path_distance} meters")
+            if path_distance < min_distance:
+                min_distance = path_distance
+                closest_agv = agv
+
+        return closest_agv, distances
+
+    def create_pose_stamped(self, pose):
+        pose_stamped = PoseStamped()
+        pose_stamped.header.frame_id = "map"
+        pose_stamped.header.stamp = rospy.Time.now()
+        pose_stamped.pose.position.x = pose[0]
+        pose_stamped.pose.position.y = pose[1]
+        pose_stamped.pose.position.z = pose[2]
+        pose_stamped.pose.orientation.x = pose[3]
+        pose_stamped.pose.orientation.y = pose[4]
+        pose_stamped.pose.orientation.z = pose[5]
+        pose_stamped.pose.orientation.w = pose[6]
+        return pose_stamped
+
+    def calculate_path_length(self, start, goal, namespace):
+        service_name = f'/{namespace}/move_base/make_plan'
+        rospy.wait_for_service(service_name)
         try:
-            get_plan = rospy.ServiceProxy('/move_base/make_plan', GetPlan)
-            
-            start_pose = PoseStamped()
-            start_pose.header.frame_id = "map"
-            start_pose.pose.position.x = start[0]
-            start_pose.pose.position.y = start[1]
-            start_pose.pose.orientation.w = 1.0
-            
-            goal_pose = PoseStamped()
-            goal_pose.header.frame_id = "map"
-            goal_pose.pose.position.x = goal[0]
-            goal_pose.pose.position.y = goal[1]
-            goal_pose.pose.orientation.w = 1.0
-            
-            tolerance = 0.05
-            
-            plan = get_plan(start_pose, goal_pose, tolerance)
-            
-            distance = sum(self.euclidean_distance(pose.pose.position, plan.plan.poses[i + 1].pose.position)
-                           for i, pose in enumerate(plan.plan.poses[:-1]))
-            
-            return distance
+            get_plan = rospy.ServiceProxy(service_name, GetPlan)
+            req = GetPlanRequest()
+            req.start = start
+            req.goal = goal
+            req.tolerance = 0.0
+            resp = get_plan(req)
+            rospy.loginfo(f"Service call successful, received plan with {len(resp.plan.poses)} poses")
+
+            path_length = 0.0
+            prev_pose = None
+            for pose in resp.plan.poses:
+                if prev_pose:
+                    dx = pose.pose.position.x - prev_pose.pose.position.x
+                    dy = pose.pose.position.y - prev_pose.pose.position.y
+                    path_length += math.sqrt(dx*dx + dy*dy)
+                prev_pose = pose
+            return path_length
         except rospy.ServiceException as e:
-            rospy.loginfo(f"Service call failed: {e}")
+            rospy.logerr(f"Service call failed: {e}")
             return float('inf')
-
-    def euclidean_distance(self, pos1, pos2):
-        return ((pos1.x - pos2.x) ** 2 + (pos1.y - pos2.y) ** 2) ** 0.5
-
-    def load_yaml_file(self, data_path):
-        try:
-            with open(data_path, 'r') as file:
-                data = yaml.safe_load(file)
-            return data
-        except FileNotFoundError:
-            rospy.logwarn(f"YAML file not found: {data_path}")
-            return None
-
-    def ros_subscrib_task(self, msg):
-        rospy.loginfo(f"Received task: {msg.data}")
-        task_data = msg.data.strip("()").split(", ")
-        agv = task_data[0]
-        start_station = task_data[1]
-        end_station = task_data[2]
-
-        data_path_file_name = f"{start_station}to{end_station}.yaml"
-        path_file = os.path.dirname(__file__)
-        pathtofile_data_path = os.path.join(path_file, 'fleetmanagement', 'data_path', data_path_file_name)
-
-        map_data = self.load_yaml_file(pathtofile_data_path)
-        if map_data:
-            self.ros_publish_path_to_navigation(agv, map_data)
-        else:
-            rospy.logwarn(f"Failed to load map data for task: {msg.data}")
-
-    def ros_publish_path_to_navigation(self, agv, map_data):
-        agv_padded = f"agv{int(agv.replace('AGV', '')):02d}"
-        nav_topic = f"/{agv_padded}/move_base/TrajectoryPlannerROS/global_plan"
-        rospy.loginfo(f"Sending map data to {nav_topic}")
-
-        path_msg = Path()
-        path_msg.header.frame_id = "map"
         
-        path_msg.poses = []
-        for pose_dict in map_data.get('poses', []):
-            pose_stamped = PoseStamped()
-            pose_stamped.header = pose_dict['header']
-            pose_stamped.pose.position.x = pose_dict['pose']['position']['x']
-            pose_stamped.pose.position.y = pose_dict['pose']['position']['y']
-            pose_stamped.pose.position.z = pose_dict['pose']['position']['z']
-            pose_stamped.pose.orientation.x = pose_dict['pose']['orientation']['x']
-            pose_stamped.pose.orientation.y = pose_dict['pose']['orientation']['y']
-            pose_stamped.pose.orientation.z = pose_dict['pose']['orientation']['z']
-            pose_stamped.pose.orientation.w = pose_dict['pose']['orientation']['w']
-            path_msg.poses.append(pose_stamped)
-        
-        pub = rospy.Publisher(nav_topic, Path, queue_size=10)
-        pub.publish(path_msg)
-
     def publish_agv_status(self):
         agv_status_info = ', '.join(self.agv_status)
-        rospy.loginfo(f"Publish  AGV status: {agv_status_info}")
         self.agv_status_pub.publish(agv_status_info)
+        rospy.loginfo(f"Publish AGV status: {agv_status_info}")
+
+    def publish_task(self, closest_agv, station_first, station_last):
+        task_info = f"{closest_agv}, {station_first}, {station_last}"
+        self.task_pub.publish(task_info)
+        rospy.loginfo(f"Task assigned to {closest_agv}: {station_first} -> {station_last}")
+
 
 if __name__ == '__main__':
     try:

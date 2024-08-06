@@ -57,6 +57,12 @@ class FleetManagementUI:
             'AGV03': {'first': ' ', 'last': ' '},
             'AGV04': {'first': ' ', 'last': ' '}
         }
+        self.start_agv_coordinates = {
+            'AGV01': (1.000, -1.000, 0.000, 0.000, 0.000, 0.000, 1.000),
+            'AGV02': (2.000, -1.000, 0.000, 0.000, 0.000, 0.000, 1.000),
+            'AGV03': (3.000, -1.000, 0.000, 0.000, 0.000, 0.000, 1.000),
+            'AGV04': (1.000, -10.000, 0.000, 0.000, 0.000, 0.000, 1.000)
+        }
         self.emergency_status = {
             'AGV01': False,
             'AGV02': False,
@@ -85,7 +91,13 @@ class FleetManagementUI:
         # ros_Publisher
         self.agv_status_pub = rospy.Publisher('/agv_status', String, queue_size=10, latch=True)
         self.mission_pub = rospy.Publisher('/mission', String, queue_size=10, latch=True)
-        self.ros_publish_agv_status(self.agv_status)
+        self.ros_publish_agv_status()
+        self.start_agv_coordinates_pubs = {
+            'AGV01': rospy.Publisher('/agv01/initialpose', PoseWithCovarianceStamped, queue_size=10, latch=True),
+            'AGV02': rospy.Publisher('/agv02/initialpose', PoseWithCovarianceStamped, queue_size=10, latch=True),
+            'AGV03': rospy.Publisher('/agv03/initialpose', PoseWithCovarianceStamped, queue_size=10, latch=True),
+            'AGV04': rospy.Publisher('/agv04/initialpose', PoseWithCovarianceStamped, queue_size=10, latch=True)
+        }
 
         # Create widget
         self.create_launch_buttons()
@@ -229,14 +241,42 @@ class FleetManagementUI:
         ]
         try:
             process = subprocess.Popen(commands[AGV_index], shell=True, preexec_fn=os.setsid)
-            time.sleep(5)
+            time.sleep(3)
             
             if process.poll() is None:
                 self.processes[AGV_index] = process
                 self.current_images[AGV_index] = 1
                 self.buttons[AGV_index].config(image=self.buttonSSHon)
                 self.agv_status[AGV_index] = "Available"
-                self.ros_publish_agv_status(self.agv_status)
+                self.ros_publish_agv_status()
+
+                agv_id = f"AGV0{AGV_index + 1}"
+                if agv_id in self.start_agv_coordinates:
+                    coords = self.start_agv_coordinates[agv_id]
+
+                    if any(np.isnan(coord) for coord in coords):
+                        rospy.logwarn(f"Invalid start coordinates for {agv_id}: {coords}")
+                        self.show_custom_message("Initialization Error", f"Invalid start coordinates for {agv_id}")
+                        return
+                
+                    initial_pose = PoseWithCovarianceStamped()
+                    initial_pose.header.frame_id = "map"
+                    initial_pose.pose.pose.position.x = coords[0]
+                    initial_pose.pose.pose.position.y = coords[1]
+                    initial_pose.pose.pose.position.z = coords[2]
+                    initial_pose.pose.pose.orientation.x = coords[3]
+                    initial_pose.pose.pose.orientation.y = coords[4]
+                    initial_pose.pose.pose.orientation.z = coords[5]
+                    initial_pose.pose.pose.orientation.w = coords[6]
+
+                    try:
+                        self.start_agv_coordinates_pubs[agv_id].publish(initial_pose)
+                        rospy.loginfo(f"Initial pose for {agv_id} published")
+                    except Exception as e:
+                        rospy.logerr(f"Failed to publish initial pose for {agv_id}: {str(e)}")
+                else:
+                    rospy.logwarn(f"AGV ID {agv_id} not found in start_agv_coordinates")
+
             else:
                 self.show_custom_message("Connection Error", f"Failed to connect to AGV{AGV_index + 1}")
                 process.terminate()
@@ -244,18 +284,16 @@ class FleetManagementUI:
                 self.current_images[AGV_index] = 0
                 self.buttons[AGV_index].config(image=self.buttonSSHoff)
                 self.agv_status[AGV_index] = "Not connect"
-                self.ros_publish_agv_status(self.agv_status)
+                self.ros_publish_agv_status()
 
         except Exception as e:
             print(f"Exception occurred while launching AGV{AGV_index + 1}: {e}")
-
             self.show_custom_message("Connection Error", f"Failed to connect to AGV{AGV_index + 1}")
-
             self.processes[AGV_index] = None
             self.current_images[AGV_index] = 0
             self.buttons[AGV_index].config(image=self.buttonSSHoff)
             self.agv_status[AGV_index] = "Not connect"
-            self.ros_publish_agv_status(self.agv_status)
+            self.ros_publish_agv_status()
 
     def stop_launch(self, AGV_index):
         process = self.processes[AGV_index]
@@ -295,7 +333,7 @@ class FleetManagementUI:
         self.current_images[AGV_index] = 0
         self.buttons[AGV_index].config(image=self.buttonSSHoff)
         self.agv_status[AGV_index] = "Not connect"
-        self.ros_publish_agv_status(self.agv_status)
+        self.ros_publish_agv_status()
 
         agv_id = f'AGV0{AGV_index + 1}'
         self.tasks[agv_id] = {'first': '', 'last': ''}
@@ -675,12 +713,12 @@ class FleetManagementUI:
         self.update_tasks()
         self.on_task_update(task_data)
 
-    def ros_publish_agv_status(self, status):
-        agv_status_info = ', '.join(status)
-        rospy.loginfo("Publish  AGV status: %s", agv_status_info)
+    def ros_publish_agv_status(self):
+        agv_status_info = ', '.join(self.agv_status)
         self.agv_status_pub.publish(agv_status_info)
+        rospy.loginfo("Publish  AGV status: %s", agv_status_info)
 
-        for i, stat in enumerate(status):
+        for i, stat in enumerate(self.agv_status):
             self.agv_status[i] = stat
 
     def ros_publish_mission(self, mission_info):
