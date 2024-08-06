@@ -6,6 +6,9 @@
 
     <group ns="agv04">
 
+        <!-- Run the map server -->
+        <node name="map_server" pkg="map_server" type="map_server" args="/home/mark/rosfleet/src/navigation/map/map01.yaml"/>
+
         <!-- Run Rviz Navigation -->
         <node name="rviz" pkg="rviz" type="rviz" args="-d $(find navigation)/rviz/navigation_agv04.rviz">
             <remap from="/clicked_point"          to="/agv04/clicked_point"/>
@@ -29,17 +32,19 @@
         <!-- Run odometry setup node -->
         <node pkg="odometry" type="agv04_odom" name="agv04_odom" output="screen"/>
 
+        <!-- Static transforms -->
+        <node name="map2map"    pkg="tf" type="static_transform_publisher" args="0 0 0 0 0 0 map agv04_map 100"/>
+        <node name="map2odom"   pkg="tf" type="static_transform_publisher" args="0 0 0 0 0 0 agv04_map agv04_odom 100"/>
+        <node name="base2laser" pkg="tf" type="static_transform_publisher" args="0.08 0 0.15 3.14 0 0 agv04_base agv04_laser 100"/>
+
         <!-- Run AMCL -->
         <include file="$(find amcl)/examples/amcl.launch">
-            <param name="odom_model_type"   value="omni"/>
-            <param name="odom_frame_id"     value="agv04_odom"/>
-            <param name="base_frame_id"     value="agv04_base"/>
-            <param name="scan_topic"        value="scan"/>
+            <param name="odom_model_type"      value="omni"/>
+            <param name="global_frame_id"      value="agv04_map" />
+            <param name="odom_frame_id"        value="agv04_odom"/>
+            <param name="base_frame_id"        value="agv04_base"/>
+            <param name="scan_topic"           value="/agv04/scan"/>
         </include>
-
-        <!-- Static transforms -->
-        <node name="map2odom"   pkg="tf" type="static_transform_publisher" args="0 0 0 0 0 0 map agv04_odom 100"/>
-        <node name="base2laser" pkg="tf" type="static_transform_publisher" args="0.08 0 0.15 3.14 0 0 agv04_base agv04_laser 100"/>
 
         <!-- Run move base -->
         <node pkg="move_base" type="move_base" name="move_base" respawn="true" output="screen">

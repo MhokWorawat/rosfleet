@@ -1,13 +1,16 @@
 global_costmap:
 
+  obstacle_range: 2.5
+  raytrace_range: 3.0
+  footprint: [[-0.35, -0.25], [0.35, -0.25], [0.35, 0.25], [-0.35, 0.25]]
   robot_radius: 0.0
   footprint_padding: 0.05
 
   global_frame: map
   robot_base_frame: agv01_base
-  update_frequency: 1.0
-  publish_frequency: 1.0
-  static_map: true
+  update_frequency: 2.0
+  publish_frequency: 2.0
+  resolution: 0.05
   rolling_window: false
 
   plugins:
@@ -15,10 +18,14 @@ global_costmap:
     - {name: sensor_obstacle,  type: "costmap_2d::ObstacleLayer"}
     - {name: inflation,        type: "costmap_2d::InflationLayer"}
 
-  sensor_obstacle:
-    observation_sources: laser_scan_sensor
-    laser_scan_sensor: {sensor_frame: agv01_laser, data_type: LaserScan, topic: scan, marking: true, clearing: true}
-
   static:
     map_topic: /map
     first_map_only: false
+
+  sensor_obstacle:
+    observation_sources: laser_scan_sensor
+    laser_scan_sensor: {sensor_frame: agv01_laser, data_type: LaserScan, topic: /agv01/scan, marking: true, clearing: true}
+
+  inflation:
+    inflation_radius: 0.2
+    cost_scaling_factor: 6.0
