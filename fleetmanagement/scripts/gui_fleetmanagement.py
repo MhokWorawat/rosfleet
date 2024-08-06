@@ -15,7 +15,6 @@ import numpy as np
 import subprocess
 import threading
 import signal
-import math
 import time
 import os
 
@@ -41,13 +40,16 @@ class FleetManagementUI:
 
         # Initialize data
         self.buttons = []
-        self.labels = []
+        self.labels_agv = []
+        self.labels_station = []
+        self.labels_task = []
         self.current_images = [0, 0, 0, 0]
         self.processes = [None, None, None, None]
         self.battery_of_agv = [100, 100, 100, 100]
         self.dropdown_vars = []
         self.recent_missions = []
         self.station = ["A", "B", "C", "D", "E", "G", "Park 1", "Park 2", "Park 3", "Park 4"]
+        self.selectAGV = ["Automatic", "AGV01", "AGV02", "AGV03", "AGV04"]
         self.agv_status = ["Not connect", "Not connect", "Not connect", "Not connect"]
         self.tasks = {
             'AGV01': {'first': ' ', 'last': ' '},
@@ -77,22 +79,23 @@ class FleetManagementUI:
             'AGV04': rospy.Subscriber('/agv04/yolov5/detections', BoundingBoxes, self.ros_subscribe_detection, 'AGV04')
         }
 
-        self.task_subscriber = None
         rospy.Subscriber('/task', String, self.ros_subscribe_task)
         rospy.Subscriber('/agv_status', String, self.ros_subscribe_agv_status)
 
         # ros_Publisher
-        self.agv_status_pub = rospy.Publisher('/agv_status', String, queue_size=4, latch=True)
-        self.mission_pub = rospy.Publisher('/mission', String, queue_size=6, latch=True)
+        self.agv_status_pub = rospy.Publisher('/agv_status', String, queue_size=10, latch=True)
+        self.mission_pub = rospy.Publisher('/mission', String, queue_size=10, latch=True)
         self.ros_publish_agv_status(self.agv_status)
 
         # Create widget
         self.create_launch_buttons()
-        self.create_dropdown()
+        self.create_dropdown_select_agv()
+        self.create_dropdown_station()
         self.create_confirm_button()
 
         # Update UI with initial data
-        self.update_dropdowns()
+        self.update_dropdowns_select_agv()
+        self.update_dropdowns_station()
 
         self.update_tasks()
         self.update_battery()
@@ -106,17 +109,14 @@ class FleetManagementUI:
     
     def shutdown_ui(self):
         try:
-            # Kill the launched roslaunch process
             if self.launch_map_process:
                 self.launch_map_process.terminate()
                 self.launch_map_process.wait()
 
-            # Kill the fleetmanagement rosrun process
             if self.fleet_management_process:
                 self.fleet_management_process.terminate()
                 self.fleet_management_process.wait()
 
-            # Kill the remaining processes related to AGV
             for process in self.processes:
                 if process:
                     os.killpg(os.getpgid(process.pid), signal.SIGTERM)
@@ -139,7 +139,6 @@ class FleetManagementUI:
             # subprocess.check_call('echo y | rosnode cleanup', shell=True)
             # time.sleep(1)
 
-            # Verify rosout is still running
             node_names = subprocess.check_output(['rosnode', 'list']).decode('utf-8').split('\n')
             if '/rosout' not in node_names:
                 print("Warning: rosout is not running.")
@@ -230,10 +229,8 @@ class FleetManagementUI:
         ]
         try:
             process = subprocess.Popen(commands[AGV_index], shell=True, preexec_fn=os.setsid)
-            # Give it a moment to start
             time.sleep(5)
             
-            # Check if the process is running
             if process.poll() is None:
                 self.processes[AGV_index] = process
                 self.current_images[AGV_index] = 1
@@ -241,7 +238,6 @@ class FleetManagementUI:
                 self.agv_status[AGV_index] = "Available"
                 self.ros_publish_agv_status(self.agv_status)
             else:
-                # Process failed to start, clean up
                 self.show_custom_message("Connection Error", f"Failed to connect to AGV{AGV_index + 1}")
                 process.terminate()
                 self.processes[AGV_index] = None
@@ -276,7 +272,6 @@ class FleetManagementUI:
 
             self.processes[AGV_index] = None
 
-            # Ensure all related ROS nodes are killed
             node_names = subprocess.check_output(['rosnode', 'list']).decode('utf-8').split('\n')
             for node in node_names:
                 if f"agv{AGV_index + 1}" in node:
@@ -285,17 +280,14 @@ class FleetManagementUI:
                     except subprocess.CalledProcessError:
                         pass
 
-            # Kill any remaining processes related to the AGV
             try:
                 subprocess.check_call(f"pkill -f agv{AGV_index + 1}", shell=True)
             except subprocess.CalledProcessError:
                 pass
 
-            # Run rosnode cleanup to remove stale nodes
             subprocess.check_call('echo y | rosnode cleanup', shell=True)
             time.sleep(1)
 
-            # Verify rosout is still running
             node_names = subprocess.check_output(['rosnode', 'list']).decode('utf-8').split('\n')
             if '/rosout' not in node_names:
                 print("Warning: rosout is not running.")
@@ -305,31 +297,19 @@ class FleetManagementUI:
         self.agv_status[AGV_index] = "Not connect"
         self.ros_publish_agv_status(self.agv_status)
 
-    def create_dropdown(self):
-        self.setup_dropdown(1558, 266)
-        self.setup_dropdown(1558, 341)
+        agv_id = f'AGV0{AGV_index + 1}'
+        self.tasks[agv_id] = {'first': '', 'last': ''}
+        self.update_tasks()
 
-    def setup_dropdown(self, x, y):
-        style = self.dropdown_style()
-        custom_font = self.get_font(14)
+    def create_dropdown_select_agv(self):
+        self.setup_dropdown_select_agv(1558, 280)
 
-        variable = tk.StringVar(self.root)
-        variable.set("Select")
-        variable.trace("w", self.update_dropdowns)
-
-        combobox = ttk.Combobox(self.root, textvariable=variable, font=custom_font, style='Custom.TCombobox', state='readonly', justify='center')
-        combobox['values'] = self.station
-        combobox.set("Select")
-        combobox.place(x=x, y=y, width=205, height=37)
-        combobox.option_add('*TCombobox*Listbox.font', custom_font)
-        combobox.option_add('*TCombobox*Listbox.justify', 'center')
-
-        self.dropdown_vars.append(variable)
-        self.labels.append((variable, combobox))
+    def create_dropdown_station(self):
+        self.setup_dropdown_station(1558, 348)
+        self.setup_dropdown_station(1558, 420)
 
     def dropdown_style(self):
         style = ttk.Style()
-        # style.theme_use("clam")
         style.configure('Custom.TCombobox',
                         background='white',
                         fieldbackground='white',
@@ -354,17 +334,67 @@ class FleetManagementUI:
 
         style.layout('Custom.TCombobox', [
             ('Combobox.field', {'expand': '1', 'sticky': 'nswe', 'children': [
-            ('Combobox.padding', {'expand': '1', 'sticky': 'nswe', 'children': [
-            ('Combobox.textarea', {'sticky': 'nswe'}),
-            ('Combobox.downarrow', {'side': 'right', 'sticky': 'e'})
-            ]})
+                ('Combobox.padding', {'expand': '1', 'sticky': 'nswe', 'children': [
+                    ('Combobox.textarea', {'sticky': 'nswe'}),
+                    ('Combobox.downarrow', {'side': 'right', 'sticky': 'e'})
+                ]})
             ]})
         ])
         return style
 
-    def update_dropdowns(self, *args):
+    def setup_dropdown_select_agv(self, x, y):
+        style = self.dropdown_style()
+        custom_font = self.get_font(14)
+
+        variable = tk.StringVar(self.root)
+        variable.set(self.selectAGV[0])
+        variable.trace("w", self.update_dropdowns_select_agv)
+
+        combobox = ttk.Combobox(self.root, textvariable=variable, font=custom_font, style='Custom.TCombobox', state='readonly', justify='center')
+        combobox['values'] = self.selectAGV
+        combobox.set(self.selectAGV[0])
+        combobox.place(x=x, y=y, width=205, height=37)
+        combobox.option_add('*TCombobox*Listbox.font', custom_font)
+        combobox.option_add('*TCombobox*Listbox.justify', 'center')
+
+        self.dropdown_vars.append(variable)
+        self.labels_agv.append((variable, combobox))
+
+    def update_dropdowns_select_agv(self, *args):
+        available_options = [self.selectAGV[0]]
+
+        for i, status in enumerate(self.agv_status):
+            if status == "Available":
+                available_options.append(self.selectAGV[i + 1])
+
+        for var, combobox in self.labels_agv:
+            current_value = var.get()
+            combobox['values'] = available_options
+
+            if current_value not in available_options:
+                var.set(self.selectAGV[0])
+
+    def setup_dropdown_station(self, x, y):
+        style = self.dropdown_style()
+        custom_font = self.get_font(14)
+
+        variable = tk.StringVar(self.root)
+        variable.set("Select")
+        variable.trace("w", self.update_dropdowns_station)
+
+        combobox = ttk.Combobox(self.root, textvariable=variable, font=custom_font, style='Custom.TCombobox', state='readonly', justify='center')
+        combobox['values'] = self.station
+        combobox.set("Select")
+        combobox.place(x=x, y=y, width=205, height=37)
+        combobox.option_add('*TCombobox*Listbox.font', custom_font)
+        combobox.option_add('*TCombobox*Listbox.justify', 'center')
+
+        self.dropdown_vars.append(variable)
+        self.labels_station.append((variable, combobox))
+
+    def update_dropdowns_station(self, *args):
         selected_values = {var.get() for var in self.dropdown_vars if var.get() != "Select"}
-        for var, combobox in self.labels:
+        for var, combobox in self.labels_station:
             current_value = var.get()
             available_options = [option for option in self.station if option not in selected_values or option == current_value]
             combobox['values'] = available_options
@@ -373,23 +403,40 @@ class FleetManagementUI:
 
     def update_dropdown_state(self):
         available_AGVs = [agv for agv in range(4) if self.agv_status[agv] == "Available"]
-        state = 'disabled' if not available_AGVs else 'readonly'
+        state_agv = 'readonly' if available_AGVs else 'disabled'
+        
+        for var, combobox in self.labels_agv:
+            combobox.config(state=state_agv)
+            if state_agv == 'disabled':
+                var.set(self.selectAGV[0])
 
-        for var, combobox in self.labels:
-            combobox.config(state=state)
-            if state == 'disabled':
+        state_station = 'readonly' if available_AGVs else 'disabled'
+        
+        for var, combobox in self.labels_station:
+            combobox.config(state=state_station)
+            if state_station == 'disabled':
                 var.set('Select')
+
+        self.update_dropdowns_select_agv()
+        self.update_dropdowns_station()
+    
+    def last_select_dropdowns(self, *args):
+        for var, combobox in self.labels_agv:
+            var.set(self.selectAGV[0])
+        for var, combobox in self.labels_station:
+            var.set("Select")
 
     def create_confirm_button(self):
         self.confirm_button = tk.Label(self.root, image=self.buttonConfirm, borderwidth=0, highlightthickness=0, bg="#ececec")
-        self.confirm_button.place(x=1444, y=460)
+        self.confirm_button.place(x=1444, y=525)
         self.confirm_button.bind("<Enter>", lambda event: self.confirm_button.config(image=self.buttonConfirmOn))
         self.confirm_button.bind("<Leave>", lambda event: self.confirm_button.config(image=self.buttonConfirm))
         self.confirm_button.bind("<Button-1>", self.on_confirm_button_click)
 
     def on_confirm_button_click(self, event):
-        first_station = self.dropdown_vars[0].get()
-        last_station = self.dropdown_vars[1].get()
+        selected_agv = self.dropdown_vars[0].get()
+        first_station = self.dropdown_vars[1].get()
+        last_station = self.dropdown_vars[2].get()
 
         available_AGVs = [
             (0, self.tasks['AGV01']['first'], self.tasks['AGV01']['last']),
@@ -408,32 +455,9 @@ class FleetManagementUI:
                 self.show_custom_message("Error", "Please select both stations.")
                 return
             else:
-                # Publisher agv available
-                mission_info = (first_station, last_station)
+                mission_info = (selected_agv, first_station, last_station)
                 self.ros_publish_mission(mission_info)
-
-        def on_task_update(task_data):
-            agv_id, task_first_station, task_last_station = task_data.data.split(", ")
-            agv_index = int(agv_id[-1]) - 1
-
-            # Update the AGV's tasks
-            self.tasks[f'AGV0{agv_index + 1}']['first'] = task_first_station
-            self.tasks[f'AGV0{agv_index + 1}']['last'] = task_last_station
-
-            # Update recent missions
-            self.recent_missions.insert(0, (task_first_station, task_last_station, f'AGV0{agv_index + 1}'))
-            if len(self.recent_missions) > 4:
-                self.recent_missions.pop()
-
-            # Reset dropdowns to default "Select"
-            for combobox in self.labels:
-                combobox[1].set("Select")
-
-            self.update_dropdowns()
-            self.update_tasks()
-            self.update_recent_missions(agv_index + 1)
-
-        self.ros_subscribe_task(on_task_update)
+                self.last_select_dropdowns()
 
     def update_tasks(self):
         coords = {
@@ -450,6 +474,33 @@ class FleetManagementUI:
             last_station = task['last']
             self.draw_text(coords[agv]['first'][0], coords[agv]['first'][1], first_station, size=13, color="black", weight="normal", tag="tasks")
             self.draw_text(coords[agv]['last'][0], coords[agv]['last'][1], last_station, size=13, color="black", weight="normal", tag="tasks")
+
+    def on_task_update(self, task_data):
+        agv_id, task_first_station, task_last_station = task_data
+        agv_index = int(agv_id[-1]) - 1
+
+        self.tasks[f'AGV0{agv_index + 1}']['first'] = task_first_station
+        self.tasks[f'AGV0{agv_index + 1}']['last'] = task_last_station
+
+        self.recent_missions.insert(0, (task_first_station, task_last_station, f'AGV0{agv_index + 1}'))
+        if len(self.recent_missions) > 4:
+            self.recent_missions.pop()
+
+        for combobox in self.labels_task:
+            combobox[1].set("Select")
+
+        self.update_dropdowns_select_agv()
+        self.update_dropdowns_station()
+        self.update_recent_missions(agv_index + 1)
+
+    def update_recent_missions(self, recent_agv):
+        self.canvas.delete("recent_missions")
+
+        for i, (first, last, agv) in enumerate(self.recent_missions):
+            self.draw_text(1477, 674 + (i * 25), f"Station {first} to Station {last}", size=12, color="black", weight="normal", tag="recent_missions")
+            self.draw_text(1698, 674 + (i * 25), agv, size=12, color="black", weight="normal", tag="recent_missions")
+
+        self.draw_text(1698, 674, f'AGV0{recent_agv}', size=12, color="black", weight="normal", tag="recent_missions")
 
     def update_status(self):
         coords = {
@@ -468,15 +519,6 @@ class FleetManagementUI:
 
     def get_agv_status(self):
         return self.agv_status
-
-    def update_recent_missions(self, recent_agv):
-        self.canvas.delete("recent_missions")
-
-        for i, (first, last, agv) in enumerate(self.recent_missions):
-            self.draw_text(1477, 627 + (i * 25), f"Station {first} to Station {last}", size=12, color="black", weight="normal", tag="recent_missions")
-            self.draw_text(1698, 627 + (i * 25), agv, size=12, color="black", weight="normal", tag="recent_missions")
-
-        self.draw_text(1698, 627, f'AGV0{recent_agv}', size=12, color="black", weight="normal", tag="recent_missions")
 
     def update_emergency_status(self):
         coords = {
@@ -499,7 +541,6 @@ class FleetManagementUI:
         self.canvas.delete("Battery_AGV03")
         self.canvas.delete("Battery_AGV04")
 
-        # Update battery status for each AGV
         self.update_battery_status(0, 331, 128, self.battery_of_agv[0], self.agv_status[0])
         self.update_battery_status(1, 331, 342, self.battery_of_agv[1], self.agv_status[1])
         self.update_battery_status(2, 331, 556, self.battery_of_agv[2], self.agv_status[2])
@@ -611,44 +652,55 @@ class FleetManagementUI:
         for i, status in enumerate(self.agv_status):
             agv_name = f'AGV0{i+1}'
             if status == 'Not connect':
-                # Unsubscribe from emergency topic if status is "Not connect"
                 if self.emergency_subscribers.get(agv_name):
                     self.emergency_subscribers[agv_name].unregister()
                     self.emergency_subscribers[agv_name] = None
             else:
-                # Subscribe to emergency topic if status is not "Not connect" and not already subscribed
                 if not self.emergency_subscribers.get(agv_name):
                     self.emergency_subscribers[agv_name] = rospy.Subscriber(f'/{agv_name}/Emergen', 
                         String, self.ros_subscribe_emergency, agv_name)
         self.update_status()
         self.update_dropdown_state()
 
-    def ros_subscribe_task(self, callback):
-        if self.task_subscriber is None:
-            self.task_subscriber = rospy.Subscriber('/task', String, callback)
+    def ros_subscribe_task(self, msg):
+        rospy.loginfo(f"Received task: {msg.data}")
+        task_data = msg.data.strip("()").split(", ")
+        agv = task_data[0]
+        first_station = task_data[1]
+        last_station = task_data[2]
+
+        self.tasks[agv]['first'] = first_station
+        self.tasks[agv]['last'] = last_station
+
+        self.update_tasks()
+        self.on_task_update(task_data)
 
     def ros_publish_agv_status(self, status):
         agv_status_info = ', '.join(status)
-        rospy.loginfo(agv_status_info)
+        rospy.loginfo("Publish  AGV status: %s", agv_status_info)
         self.agv_status_pub.publish(agv_status_info)
 
         for i, stat in enumerate(status):
             self.agv_status[i] = stat
 
     def ros_publish_mission(self, mission_info):
-        first, last = mission_info
-        mission_info_str = f"{first},{last}"
+        selected_agv, first, last = mission_info
+        mission_info_str = f"{selected_agv},{first},{last}"
         rospy.loginfo(f"mission : ({mission_info_str})")
         self.mission_pub.publish(mission_info_str)
 
 class MiniMapUI:
     def __init__(self, parent, fleetGUI):
         self.parent = parent
+
         self.map_canvas = tk.Canvas(parent, width=880, height=700, highlightthickness=0)
         self.map_canvas.place(x=431, y=150)
 
+        self.minimap_canvas = tk.Canvas(parent, width=880, height=700, highlightthickness=0)
+        self.minimap_canvas.place(x=431, y=150)
+
         rospy.Subscriber('/map', OccupancyGrid, self.map_callback)
-        rospy.Subscriber('/amcl_pose', PoseWithCovarianceStamped, self.pose_callback_agv01)
+        rospy.Subscriber('/agv01/amcl_pose', PoseWithCovarianceStamped, self.pose_callback_agv01)
         rospy.Subscriber('/agv02/amcl_pose', PoseWithCovarianceStamped, self.pose_callback_agv02)
         rospy.Subscriber('/agv03/amcl_pose', PoseWithCovarianceStamped, self.pose_callback_agv03)
         rospy.Subscriber('/agv04/amcl_pose', PoseWithCovarianceStamped, self.pose_callback_agv04)
@@ -662,10 +714,18 @@ class MiniMapUI:
         self.new_height = 0
         self.x_center = 0
         self.y_center = 0
-        self.update_interval = 500  # Update interval in milliseconds
+        self.update_interval = 500
 
+        self.load_map_image()
         self.load_agv_images()
-        self.parent.after(self.update_interval, self.update_poses)  # Start the periodic update
+        self.parent.after(self.update_interval, self.update_poses)
+
+    def load_map_image(self):
+        path_file = os.path.dirname(__file__)
+        map_image_path = os.path.join(path_file, "../image/minimap.png")
+        self.minimap_image = ImageTk.PhotoImage(Image.open(map_image_path))
+        self.minimap_canvas.create_image(0, 0, anchor=tk.NW, image=self.minimap_image, tags="minimap_image")
+        self.minimap_canvas.tag_lower("minimap_image")
 
     def load_agv_images(self):
         path_file = os.path.dirname(__file__)
@@ -679,7 +739,6 @@ class MiniMapUI:
     def map_callback(self, data):
         self.map_data = data
         self.draw_map()
-        self.draw_robots()
 
     def pose_callback_agv01(self, data):
         self.latest_msgs['AGV01'] = data
@@ -705,7 +764,6 @@ class MiniMapUI:
                 self.robot_poses['AGV04'] = self.latest_msgs['AGV04'].pose.pose
             self.draw_robots()
 
-        # Schedule the next update
         self.parent.after(self.update_interval, self.update_poses)
 
     def draw_map(self):
@@ -742,19 +800,27 @@ class MiniMapUI:
             resolution = self.map_data.info.resolution
             origin_x = self.map_data.info.origin.position.x
             origin_y = self.map_data.info.origin.position.y
+            width = self.map_data.info.width
+            height = self.map_data.info.height
 
-            aspect_ratio = min(880 / self.map_data.info.width, 700 / self.map_data.info.height)
+            aspect_ratio = min(880 / width, 700 / height)
 
             agv_status = self.fleetGUI.get_agv_status()
 
             for i, (robot_id, pose) in enumerate(self.robot_poses.items()):
                 status = agv_status[i] if i < len(agv_status) else "Not connect"
-                if status != "Available":
+
+                self.map_canvas.delete(robot_id)
+                self.minimap_canvas.delete(robot_id)
+
+                if status == "Not connect":
                     self.map_canvas.delete(robot_id)
+                    self.minimap_canvas.delete(robot_id)
                     continue
 
                 if pose is None:
                     self.map_canvas.delete(robot_id)
+                    self.minimap_canvas.delete(robot_id)
                     continue
 
                 x = (pose.position.x - origin_x) / resolution
@@ -762,13 +828,13 @@ class MiniMapUI:
                 robot_x = self.x_center + int(x * aspect_ratio)
                 robot_y = self.y_center + int((self.map_data.info.height - y) * aspect_ratio)
 
-                self.map_canvas.delete(robot_id)
-
                 if robot_id in self.agv_images:
                     self.map_canvas.create_image(robot_x, robot_y, image=self.agv_images[robot_id], anchor=tk.CENTER, tags=robot_id)
+                    self.minimap_canvas.create_image(robot_x, robot_y, image=self.agv_images[robot_id], anchor=tk.CENTER, tags=robot_id)
                     self.map_canvas.tag_raise(robot_id)
+                    self.minimap_canvas.tag_raise(robot_id)
                 else:
-                    rospy.logwarn(f"Pose for {robot_id} is None, skipping drawing for this robot.")
+                    rospy.logwarn(f"No image found for {robot_id}, skipping drawing.")
 
 if __name__ == "__main__":
     root = tk.Tk()

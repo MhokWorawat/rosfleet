@@ -10,7 +10,7 @@ def send_pose(start_station, target_station):
     start_pose = Pose()
     target_pose = Pose()
     
-    stations = {
+    station_coordinates = {
         'A': (-2.793, -3.458, 0.000, 0.000, 0.000, 0.000, 1.000),
         'B': (0.907, -3.544, 0.000, 0.000, 0.000, 0.000, 1.000),
         'C': (0.198, -0.259, 0.000, -0.000, 0.000, 1.000, -0.000),
@@ -24,9 +24,9 @@ def send_pose(start_station, target_station):
         'P5': (1.564, 3.617, 0.000, 0.000, 0.000, -0.705, 0.709)
     }
 
-    if start_station in stations and target_station in stations:
-        start_position = stations[start_station]
-        target_position = stations[target_station]
+    if start_station in  station_coordinates and target_station in  station_coordinates:
+        start_position =  station_coordinates[start_station]
+        target_position =  station_coordinates[target_station]
 
         # Set start pose
         start_pose.position.x, start_pose.position.y, start_pose.position.z = start_position[:3]
@@ -42,7 +42,7 @@ def send_pose(start_station, target_station):
         target_pose_pub.publish(target_pose)
         rospy.loginfo("Published target pose: (%f, %f)", target_pose.position.x, target_pose.position.y)
     else:
-        rospy.logerr("Invalid station selected. Please select valid stations.")
+        rospy.logerr("Invalid station selected. Please select valid  station.")
 
 if __name__ == '__main__':
     try:
