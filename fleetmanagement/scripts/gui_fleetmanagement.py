@@ -23,6 +23,10 @@ class FleetManagementUI:
         rospy.init_node('gui_fleet_management', anonymous=True)
         self.launch_map_process = subprocess.Popen(["roslaunch", "navigation", "map.launch"])
         self.fleet_management_process = subprocess.Popen(["rosrun", "fleetmanagement", "fleetmanagement.py"])
+        self.AGV01_management_process = subprocess.Popen(["rosrun", "fleetmanagement", "AGV01_management.py"])
+        self.AGV02_management_process = subprocess.Popen(["rosrun", "fleetmanagement", "AGV02_management.py"])
+        self.AGV03_management_process = subprocess.Popen(["rosrun", "fleetmanagement", "AGV03_management.py"])
+        self.AGV04_management_process = subprocess.Popen(["rosrun", "fleetmanagement", "AGV04_management.py"])
 
         self.root = root
         self.root.title("Fleet Management")
@@ -128,6 +132,22 @@ class FleetManagementUI:
             if self.fleet_management_process:
                 self.fleet_management_process.terminate()
                 self.fleet_management_process.wait()
+
+            if self.AGV01_management_process:
+                self.AGV01_management_process.terminate()
+                self.AGV01_management_process.wait()
+            
+            if self.AGV02_management_process:
+                self.AGV02_management_process.terminate()
+                self.AGV02_management_process.wait()
+
+            if self.AGV03_management_process:
+                self.AGV03_management_process.terminate()
+                self.AGV03_management_process.wait()
+
+            if self.AGV04_management_process:
+                self.AGV04_management_process.terminate()
+                self.AGV04_management_process.wait()
 
             for process in self.processes:
                 if process:
@@ -340,11 +360,11 @@ class FleetManagementUI:
         self.update_tasks()
 
     def create_dropdown_select_agv(self):
-        self.setup_dropdown_select_agv(1558, 280)
+        self.setup_dropdown_select_agv(1573, 280)
 
     def create_dropdown_station(self):
-        self.setup_dropdown_station(1558, 348)
-        self.setup_dropdown_station(1558, 420)
+        self.setup_dropdown_station(1573, 348)
+        self.setup_dropdown_station(1573, 420)
 
     def dropdown_style(self):
         style = ttk.Style()
@@ -391,7 +411,7 @@ class FleetManagementUI:
         combobox = ttk.Combobox(self.root, textvariable=variable, font=custom_font, style='Custom.TCombobox', state='readonly', justify='center')
         combobox['values'] = self.selectAGV
         combobox.set(self.selectAGV[0])
-        combobox.place(x=x, y=y, width=205, height=37)
+        combobox.place(x=x, y=y, width=189, height=37)
         combobox.option_add('*TCombobox*Listbox.font', custom_font)
         combobox.option_add('*TCombobox*Listbox.justify', 'center')
 
@@ -423,7 +443,7 @@ class FleetManagementUI:
         combobox = ttk.Combobox(self.root, textvariable=variable, font=custom_font, style='Custom.TCombobox', state='readonly', justify='center')
         combobox['values'] = self.station
         combobox.set("Select")
-        combobox.place(x=x, y=y, width=205, height=37)
+        combobox.place(x=x, y=y, width=189, height=37)
         combobox.option_add('*TCombobox*Listbox.font', custom_font)
         combobox.option_add('*TCombobox*Listbox.justify', 'center')
 

@@ -3,7 +3,6 @@
 import rospy
 from std_msgs.msg import String
 from nav_msgs.srv import GetPlan, GetPlanRequest
-from nav_msgs.msg import Path
 from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped
 import math
 
@@ -41,8 +40,11 @@ class FleetManagement:
         rospy.Subscriber('/agv02/amcl_pose', PoseWithCovarianceStamped, self.agv02_pose_callback)
         rospy.Subscriber('/agv03/amcl_pose', PoseWithCovarianceStamped, self.agv03_pose_callback)
         rospy.Subscriber('/agv04/amcl_pose', PoseWithCovarianceStamped, self.agv04_pose_callback)
-        rospy.Subscriber('/agv_status', String, self.ros_subscrib_agv_status)
-        rospy.Subscriber('/mission', String, self.ros_subscrib_mission)
+        rospy.Subscriber('/request_parking', String, self.ros_subscribe_request_park)
+        rospy.Subscriber('/agv_status', String, self.ros_subscribe_agv_status)
+        rospy.Subscriber('/mission', String, self.ros_subscribe_mission)
+
+        self.parking_status_update = ParkingStatusUpdate(self)
 
     def agv01_pose_callback(self, msg):
         self.agv_poses['AGV01'] = (msg.pose.pose.position.x, 
@@ -80,13 +82,13 @@ class FleetManagement:
                                    msg.pose.pose.orientation.z,
                                    msg.pose.pose.orientation.w)
         
-    def ros_subscrib_agv_status(self, msg):
-        rospy.loginfo(f"Received AGV status: {msg.data}")
+    def ros_subscribe_agv_status(self, msg):
+        rospy.loginfo(f"Fleet Received AGV status: {msg.data}")
         status_list = msg.data.split(', ')
         if len(status_list) == 4:
             self.agv_status = status_list
 
-    def ros_subscrib_mission(self, msg):
+    def ros_subscribe_mission(self, msg):
         rospy.loginfo(f"Received mission: {msg.data}")
         mission = msg.data.split(',')
         if len(mission) == 3:
@@ -121,9 +123,9 @@ class FleetManagement:
             else:
                 closest_agv = selected_agv
 
-            self.publish_task(closest_agv, station_first, station_last)
-            self.agv_status[int(closest_agv[-2:]) - 1] = "Executing mission"
+            self.agv_status[int(closest_agv[-2:]) - 1] = "Go to First Station"
             self.publish_agv_status()
+            self.publish_task(closest_agv, station_first, station_last)
         else:
             rospy.loginfo("No AGVs available for the task.")
 
@@ -144,7 +146,60 @@ class FleetManagement:
                 closest_agv = agv
 
         return closest_agv, distances
+        
+    def ros_subscribe_request_park(self, msg):
+        rospy.loginfo(f"{msg.data} : Requested Parking,")
+        agv_request = msg.data.upper()
 
+        try:
+            agv_index = int(agv_request[-2:]) - 1
+        except ValueError:
+            rospy.loginfo(f"Invalid AGV name: {agv_request}")
+            return
+
+        if self.agv_status[agv_index] == "Go to Last Station":
+            self.select_park_for_agv(agv_request)
+        else:
+            rospy.loginfo(f"{agv_request} requested parking, but the status is not 'Go to Last Station'")
+
+    def select_park_for_agv(self, agv_request):
+        empty_parks = [f'Park{i + 1:01}' for i, status in enumerate(self.parking_status_update.station_status.values()) if status == "Empty"]
+
+        rospy.loginfo(f"Empty Parks: {empty_parks}")
+        if empty_parks:
+            agv_coords = self.agv_poses[agv_request]
+            agv_namespace = agv_request.lower()
+            if len(empty_parks) == 1:
+                closest_park = empty_parks[0]
+                rospy.loginfo(f"Only one empty park available: {closest_park}")
+            else:
+                closest_park, distances = self.get_closest_park(empty_parks, agv_coords, agv_namespace)
+                rospy.loginfo(f"Closest : {closest_park} distances: {distances}")
+
+            self.agv_status[int(agv_request[-2:]) - 1] = "Available"
+            self.publish_agv_status()
+        else:
+            rospy.loginfo("No empty parks available.")
+
+    def get_closest_park(self, stations, target_coords, agv_namespace):
+        min_distance = float('inf')
+        closest_station = None
+        distances = {}
+
+        for station in stations:
+            start_pose = self.create_pose_stamped(target_coords)
+            goal_pose = self.create_pose_stamped(self.station_coordinates[station])
+            path_distance = self.calculate_path_length(start_pose, goal_pose, agv_namespace)
+
+            distances[station] = path_distance
+            rospy.loginfo(f"{station} -> {target_coords}: {path_distance} meters")
+            if path_distance < min_distance:
+                min_distance = path_distance
+                closest_station = station
+
+        return closest_station, distances
+
+    
     def create_pose_stamped(self, pose):
         pose_stamped = PoseStamped()
         pose_stamped.header.frame_id = "map"
@@ -193,6 +248,58 @@ class FleetManagement:
         self.task_pub.publish(task_info)
         rospy.loginfo(f"Task assigned to {closest_agv}: {station_first} -> {station_last}")
 
+class ParkingStatusUpdate:
+    def __init__(self, fleet_management):
+        self.fleet_management = fleet_management
+
+        self.station_status = {
+            'Park1': "Empty",
+            'Park2': "Empty",
+            'Park3': "Empty",
+            'Park4': "Empty"
+        }
+        self.bounding_boxes = {
+            'A': (1.0, 1.0),
+            'B': (1.0, 1.0),
+            'C': (1.0, 1.0),
+            'D': (1.0, 1.0),
+            'E': (1.0, 1.0),
+            'G': (1.0, 1.0),
+            'Park1': (2.0, 2.5),
+            'Park2': (2.0, 2.5),
+            'Park3': (2.0, 1.5),
+            'Park4': (2.0, 2.5)
+        }
+
+        self.parking_status_pub = rospy.Publisher('/parking_status', String, queue_size=10, latch=True)
+        rospy.Timer(rospy.Duration(1), self.update_station_status)
+
+    def update_station_status(self, event):
+        agv_poses = self.fleet_management.agv_poses
+        station_coordinates = self.fleet_management.station_coordinates
+        updated_status = {station: "Empty" for station in ['Park1', 'Park2', 'Park3', 'Park4']}
+
+        for agv, agv_pose in agv_poses.items():
+            agv_index = int(agv[-2:]) - 1
+            if self.fleet_management.agv_status[agv_index] != "Not connect":
+                for station, station_pose in station_coordinates.items():
+                    if self.is_within_bounds(agv_pose, station_pose, self.bounding_boxes[station]):
+                        updated_status[station] = "Occupied"
+
+        self.station_status = updated_status
+        self.publish_station_status()
+
+    def is_within_bounds(self, agv_pose, station_pose, bounding_box):
+        x_min = station_pose[0] - bounding_box[0] / 2
+        x_max = station_pose[0] + bounding_box[0] / 2
+        y_min = station_pose[1] - bounding_box[1] / 2
+        y_max = station_pose[1] + bounding_box[1] / 2
+
+        return x_min <= agv_pose[0] <= x_max and y_min <= agv_pose[1] <= y_max
+
+    def publish_station_status(self):
+        station_status_info = ', '.join([self.station_status[f'Park{i+1}'] for i in range(4)])
+        self.parking_status_pub.publish(station_status_info)
 
 if __name__ == '__main__':
     try:

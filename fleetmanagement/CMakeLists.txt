@@ -24,6 +24,10 @@ include_directories(
 catkin_install_python(PROGRAMS
   scripts/gui_fleetmanagement.py
   scripts/fleetmanagement.py
+  scripts/AGV01_management.py
+  scripts/AGV02_management.py
+  scripts/AGV03_management.py
+  scripts/AGV04_management.py
   scripts/setposition.py
   scripts/test.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
