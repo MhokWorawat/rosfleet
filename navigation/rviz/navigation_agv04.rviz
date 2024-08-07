@@ -69,7 +69,7 @@ Visualization Manager:
       Draw Behind: false
       Enabled: true
       Name: GlobalMap
-      Topic: /agv04/move_base/local_costmap/costmap
+      Topic: /agv04/move_base/global_costmap/costmap
       Unreliable: false
       Use Timestamp: false
       Value: true
