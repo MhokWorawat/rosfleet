@@ -4,6 +4,7 @@
 #include <ros.h>
 #include <geometry_msgs/Twist.h>
 #include <std_msgs/UInt32MultiArray.h>
+#include <std_msgs/Float32MultiArray.h>
 #include <std_msgs/Float32.h>
 #include <std_msgs/String.h>
 #include <std_msgs/Bool.h>
@@ -11,8 +12,10 @@
 //--------------------------------------[ ROS ]
   ros::NodeHandle nh;
   geometry_msgs::Twist velocity_msg;
+  std_msgs::Float32MultiArray speed_msg;
   std_msgs::UInt32MultiArray encoder_msg;
   ros::Publisher Velocity_pub("Velocity", &velocity_msg);
+  ros::Publisher Speed_pub("speed", &speed_msg);
   ros::Publisher Encoder_pub("Encoder", &encoder_msg);
 
   std_msgs::String emergen_msg;
@@ -25,8 +28,8 @@ const int PPR = 1950;
 const double wheelRadius = 0.063;      // in meters
 const double wheelBaseWidth = 0.37;    // in meters
 
-const double min_speed_cmd = 0.001;    // in meters/second
-const double speed_to_pwm_ratio[] = {0.0001, 0.0002};
+const double min_speed_cmd[] = {0.14, 0.10};    // in meters/second
+const double speed_to_pwm_ratio[] = {0.0018, 0.0020};
 
 //--------------------------------------[ Define Device Pin ]
 #define ENCODER_L_PIN_A 2
@@ -92,18 +95,18 @@ ros::Subscriber<geometry_msgs::Twist> AGVsubscriber("cmd_vel", AGV_cmd_vel);
 ros::Subscriber<std_msgs::Bool> BuzzerSubscriber("buzzer", Buzzer);
 
 void UpdateEncoderSpeedL() {
-  CounterEncoderL += (digitalRead(ENCODER_L_PIN_A) == digitalRead(ENCODER_L_PIN_B)) ? -1 : 1;
+  CounterEncoderL += (digitalRead(ENCODER_L_PIN_A) == HIGH) ? ((digitalRead(ENCODER_L_PIN_B) == LOW) ? 1 : -1) : ((digitalRead(ENCODER_L_PIN_B) == LOW) ? -1 : 1);
 }
 
 void UpdateEncoderSpeedR() {
-  CounterEncoderR += (digitalRead(ENCODER_R_PIN_A) == digitalRead(ENCODER_R_PIN_B)) ? -1 : 1;
+  CounterEncoderR += (digitalRead(ENCODER_R_PIN_A) == HIGH) ? ((digitalRead(ENCODER_R_PIN_B) == LOW) ? 1 : -1) : ((digitalRead(ENCODER_R_PIN_B) == LOW) ? -1 : 1);
 }
 
 void UpdateCurrentSpeed() {
-  double RPS_MotorL = (CounterEncoderL * (1000 / loopTime)) / PPR;
+  double RPS_MotorL = (CounterEncoderL * (1000.00 / loopTime)) / PPR;
   speed_cur_motorL = wheelRadius * 2.0 * PI * RPS_MotorL;
 
-  double RPS_MotorR = (CounterEncoderR * (1000 / loopTime)) / PPR;
+  double RPS_MotorR = (CounterEncoderR * (1000.00 / loopTime)) / PPR;
   speed_cur_motorR = wheelRadius * 2.0 * PI * RPS_MotorR;
 }
 
@@ -122,9 +125,13 @@ void publisher() {
   velocity_msg.angular.y = 0.0;
   velocity_msg.angular.z = angular_z;
 
+  // Prepare speed data
+  speed_msg.data_length = 2;
+  speed_msg.data[0] = speed_cur_motorL;
+  speed_msg.data[1] = speed_cur_motorR;
+
   // Prepare encoder data
   encoder_msg.data_length = 2;
-  encoder_msg.data = (uint32_t*) realloc(encoder_msg.data, encoder_msg.data_length * sizeof(uint32_t));
   encoder_msg.data[0] = CounterEncoderL;
   encoder_msg.data[1] = CounterEncoderR;
 
@@ -171,6 +178,7 @@ void setup() {
   
   nh.initNode();
   nh.advertise(Velocity_pub);
+  nh.advertise(Speed_pub);
   nh.advertise(Encoder_pub);
   nh.advertise(Emergen_pub);
   nh.advertise(Success_pub);
@@ -221,8 +229,8 @@ void loop() {
     PID_MotorL.Compute();
     PID_MotorR.Compute();
 
-    PWM_motor[0] = constrain(((speed_req_motorL + sgn(speed_req_motorL) * min_speed_cmd) / speed_to_pwm_ratio[0]) + (speed_cmd_motorL / speed_to_pwm_ratio[0]), -255, 255);
-    PWM_motor[1] = constrain(((speed_req_motorR + sgn(speed_req_motorR) * min_speed_cmd) / speed_to_pwm_ratio[1]) + (speed_cmd_motorR / speed_to_pwm_ratio[1]), -255, 255);
+    PWM_motor[0] = constrain(((speed_req_motorL + sgn(speed_req_motorL) * min_speed_cmd[0]) / speed_to_pwm_ratio[0]) + (speed_cmd_motorL / speed_to_pwm_ratio[0]), -255, 255);
+    PWM_motor[1] = constrain(((speed_req_motorR + sgn(speed_req_motorR) * min_speed_cmd[1]) / speed_to_pwm_ratio[1]) + (speed_cmd_motorR / speed_to_pwm_ratio[1]), -255, 255);
 
     lastTime = currentTime;
   }
