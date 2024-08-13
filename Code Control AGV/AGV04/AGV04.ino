@@ -29,7 +29,6 @@ const double wheelBaseLength = 0.095;  // in meters
 const double min_speed_cmd = 0.176;    // in meters/second
 const double speed_to_pwm_ratio[] = {0.000774, 0.000710, 0.000903, 0.000452};
 
-#define PI 3.14159
 //--------------------------------------[ Define Device Pin ]
 #define encoderPin1A 53  // FL
 #define encoderPin1B 25  // FL

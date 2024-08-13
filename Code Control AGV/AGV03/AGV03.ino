@@ -27,7 +27,6 @@ const double wheelBaseLength = 0.517;     // in meters
 const double min_speed_cmd = 0.001;       // in meters/second
 const double speed_to_pwm_ratio = 0.0001;
 
-#define PI 3.14159
 //--------------------------------------[ Define Device Pin ]
 #define ENCODER_A 3
 #define ENCODER_B 2
@@ -55,9 +54,7 @@ const double max_speed = 0.3;
 
 //--------------------------------------[ Variable : Steering Angle ]
 double steering_req;
-double steering_cmd;
 double steering_cur;
-double steering_error;
 int PWMsteering = 60;
 
 const int max_steering = 70; 
@@ -84,7 +81,6 @@ static SetState state = setDirection;
 const double PID_speed_param[] = { 1.3, 0, 0 };
 const double PID_steer_param[] = { 1.3, 0, 0 };
 PID PID_Speed(&speed_cur, &speed_cmd, &speed_req, PID_speed_param[0], PID_speed_param[1], PID_speed_param[2], DIRECT);
-PID PID_Steering(&steering_cur, &steering_cmd, &steering_req, PID_steer_param[0], PID_steer_param[1], PID_steer_param[2], DIRECT);
 
 //[ Function ] ---------------------------------------------
 
@@ -97,7 +93,7 @@ void AGV_cmd_vel(const geometry_msgs::Twist& cmd_vel) {
     steering_req = 0;
   } else {
     speed_req = linearX;
-    steering_req = angularZ * (180 / PI);
+    steering_req = constrain(degrees(angularZ), -max_steering, max_steering);
   }
 
 }
@@ -132,7 +128,7 @@ void publisher() {
   velocity_msg.linear.z = 0.0;
   velocity_msg.angular.x = 0.0;
   velocity_msg.angular.y = 0.0;
-  velocity_msg.angular.z = steering_cur;
+  velocity_msg.angular.z = steering_cur * (PI / 180);
 
   // Prepare encoder data
   encoder_msg.data_length = 2;
@@ -185,14 +181,15 @@ class steering{
     pinMode(pinL, OUTPUT);
   }
 
-  void setDirection(const int PWM, const String InputDirection){
-    if(InputDirection == "RIGHT"){
-      analogWrite(pinR, abs(PWM));
+  void setDirection(const int steering_req_ang){
+    int steering_error = steering_req_ang - steering_cur;
+    if(steering_error < 0){
+      analogWrite(pinR, PWMsteering);
       analogWrite(pinL, 0);
-    } else if (InputDirection == "LEFT"){
+    } else if (steering_error > 0){
       analogWrite(pinR, 0);
-      analogWrite(pinL, abs(PWM));
-    } else if (InputDirection == "STOP"){
+      analogWrite(pinL, PWMsteering);
+    } else {
       analogWrite(pinR, 0);
       analogWrite(pinL, 0);
     }
@@ -219,10 +216,6 @@ void setup() {
   PID_Speed.SetOutputLimits(-max_speed, max_speed);
   PID_Speed.SetMode(AUTOMATIC);
 
-  PID_Steering.SetSampleTime(loopTime);
-  PID_Steering.SetOutputLimits(0, 90);
-  PID_Steering.SetMode(AUTOMATIC);
-
   pinMode(ENCODER_A, INPUT_PULLUP);
   pinMode(ENCODER_B, INPUT_PULLUP);
   pinMode(ENCODER_C, INPUT_PULLUP);
@@ -244,7 +237,7 @@ void setup() {
   steering.pinR = MotorPINSteerR;
   steering.pinL = MotorPINSteerL;
   steering.setup();
-  steering.setDirection(0, "STOP");
+  steering.setDirection(0);
 
 }
 
@@ -271,31 +264,27 @@ void loop() {
         steering_req = 0;
         state = onLoop;
       } else {
-        steering.setDirection(PWMsteering, "LEFT");
+        analogWrite(MotorPINSteerR, 0);
+        analogWrite(MotorPINSteerL, PWMsteering);
       }
       break;
     
     case onLoop:
       if (NoCommuLoops >= NoCommuLoopsMax) { 
         motor.speed(0, "STOP");
-        steering.setDirection(0, "STOP");
+        steering.setDirection(0);
 
       } else {
         if (digitalRead(EMERGENCY_SWITCH_PIN) == LOW){
           emergen_msg.data = "on";
           motor.speed(0, "STOP");
-          steering.setDirection(0, "STOP");
+          steering.setDirection(0);
 
         } else {
           emergen_msg.data = "off";
           success_msg.data = (digitalRead(SUCCESS_WORK_PIN) == LOW) ? "on" : "off";
 
-          UpdateCurrentSteer();
-          steering_cmd = constrain(steering_cmd, -max_steering, max_steering);
-          PID_Steering.Compute();
-          PWMsteering = (steering_cmd, -100, 100);
-          steering.setDirection(PWMsteering, PWMsteering > 0 ? "RIGHT" : (PWMsteering < 0 ? "LEFT" : "STOP"));
-
+          steering.setDirection(steering_req);
           motor.speed(PWM_motor, PWM_motor > 0 ? "FORWARD" : (PWM_motor < 0 ? "BACKWARD" : "STOP"));
         }
       }
