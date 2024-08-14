@@ -129,8 +129,6 @@ Visualization Manager:
           Value: true
         agv04_laser:
           Value: true
-        agv04_map:
-          Value: true
         agv04_odom:
           Value: true
         map:
@@ -143,11 +141,10 @@ Visualization Manager:
       Show Names: true
       Tree:
         map:
-          agv04_map:
-            agv04_odom:
-              agv04_base:
-                agv04_laser:
-                  {}
+          agv04_odom:
+            agv04_base:
+              agv04_laser:
+                {}
       Update Interval: 0
       Value: true
     - Alpha: 1
@@ -221,7 +218,7 @@ Visualization Manager:
       Shaft Length: 0.23000000417232513
       Shaft Radius: 0.009999999776482582
       Shape: Arrow (Flat)
-      Topic: /particlecloud
+      Topic: /agv04/particlecloud
       Unreliable: false
       Value: true
     - Alpha: 1
@@ -267,7 +264,7 @@ Visualization Manager:
       Color: 255; 255; 255
       Color Transformer: Intensity
       Decay Time: 0
-      Enabled: false
+      Enabled: true
       Invert Rainbow: false
       Max Color: 255; 255; 255
       Min Color: 0; 0; 0
@@ -282,7 +279,7 @@ Visualization Manager:
       Unreliable: false
       Use Fixed Frame: true
       Use rainbow: true
-      Value: false
+      Value: true
   Enabled: true
   Global Options:
     Background Color: 48; 48; 48
@@ -311,7 +308,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/XYOrbit
-      Distance: 4.226866722106934
+      Distance: 33.584205627441406
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -319,17 +316,17 @@ Visualization Manager:
         Value: false
       Field of View: 0.7853981852531433
       Focal Point:
-        X: -0.28485238552093506
-        Y: 0.16276907920837402
-        Z: 1.0728836059570312e-06
+        X: 7.392299652099609
+        Y: -15.864028930664062
+        Z: 1.5497207641601562e-06
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.4397979974746704
+      Pitch: 0.984797477722168
       Target Frame: map
-      Yaw: 2.557297945022583
+      Yaw: 3.5473074913024902
     Saved: ~
 Window Geometry:
   Displays:

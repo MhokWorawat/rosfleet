@@ -7,7 +7,7 @@
 
     <group ns="agv01">
 
-        <!-- map server -->
+        <!-- Run the map server -->
         <include file="$(find navigation)/launch/map.launch" />
 
         <!-- Run Rviz Navigation -->
@@ -24,7 +24,7 @@
         <!-- Start laser scan -->
         <node name="slamware_ros_sdk_server_node" pkg="slamware_ros_sdk" type="slamware_ros_sdk_server_node" output="screen">
             <param name="ip_address"           value="192.168.0.115"/>
-            <param name="angle_compensate"     value="true"/>
+            <param name="angle_compensate"     value="false"/>
             <param name="fixed_odom_map_tf"    value="false"/>
             <param name="odom_frame"           value="agv01_odom"/>
             <param name="robot_frame"          value="agv01_base"/>
@@ -38,7 +38,7 @@
         <node pkg="odometry" type="agv01_odom" name="agv01_odom" output="screen"/>
 
         <!-- Static transforms -->
-        <node name="map2odom"   pkg="tf" type="static_transform_publisher" args="1.0 -1.0 0 0 0 0 map agv01_odom 100"/>
+        <!-- <node name="map2odom"   pkg="tf" type="static_transform_publisher" args="1.05 -1.0 0 0 0 0 map agv01_odom 100"/> -->
         <node name="base2laser" pkg="tf" type="static_transform_publisher" args="0.25 0 0.6 0 0 0 agv01_base agv01_laser 100"/>
 
         <!-- Run AMCL -->
@@ -58,6 +58,7 @@
 
             <param name="TrajectoryPlannerROS/meter_scoring" type="bool" value="true"/>
         </node>
+        
 
     </group>
 </launch>

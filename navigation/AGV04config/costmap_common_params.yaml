@@ -10,7 +10,7 @@ costmap_common_params:
   resolution: 0.05
 
   inflation:
-    inflation_radius: 0.2
+    inflation_radius: 0.4
     cost_scaling_factor: 6.0
 
   sensor_obstacle:

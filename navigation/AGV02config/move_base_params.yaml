@@ -20,7 +20,9 @@ MoveBaseRos:
   clearing_rotation_allowed: false
 
   global_planner:
-    use_dijkstra: false
+    use_dijkstra: False
     use_a_star: true
     tolerance: 0.1
     allow_unknown: true
+
+
