@@ -1,7 +1,3 @@
-//
-// Created by lihao on 19-7-9.
-//
-
 #ifndef OCCMAPTRANSFORM_H
 #define OCCMAPTRANSFORM_H
 

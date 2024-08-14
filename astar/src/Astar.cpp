@@ -1,7 +1,3 @@
-//
-// Created by lihao on 19-7-9.
-//
-
 #include "Astar.h"
 
 namespace pathplanning{
@@ -27,7 +23,7 @@ void Astar::InitAstar(Mat& _Map, Mat& Mask, AstarConfig _config)
     MapProcess(Mask);
 }
 
-void Astar::PathPlanning(Point _startPoint, Point _targetPoint, vector<Point>& path)
+void Astar::PathPlanning(Point _startPoint, Point _targetPoint, vector<Point>& path, vector<double>& orientations)
 {
     // Get variables
     startPoint = _startPoint;
@@ -35,7 +31,11 @@ void Astar::PathPlanning(Point _startPoint, Point _targetPoint, vector<Point>& p
 
     // Path Planning
     Node* TailNode = FindPath();
-    GetPath(TailNode, path);
+
+    // Get the path and orientations
+    if (TailNode) {
+        GetPath(TailNode, path, orientations);
+    }
 }
 
 void Astar::DrawPath(Mat& _Map, vector<Point>& path, InputArray Mask, Scalar color,
@@ -121,7 +121,7 @@ Node* Astar::FindPath()
         // Find the node with least F value
         Point CurPoint = OpenList.top().second;
         OpenList.pop();
-        int index = point2index(CurPoint);
+        int index = point2index(CurPoint);  
         Node* CurNode = OpenDict[index];
         OpenDict.erase(index);
 
@@ -206,29 +206,63 @@ Node* Astar::FindPath()
     return NULL; // Can not find a valid path
 }
 
-void Astar::GetPath(Node* TailNode, vector<Point>& path)
+void Astar::GetPath(Node* TailNode, vector<Point>& path, vector<double>& orientations)
 {
-    PathList.clear();
     path.clear();
+    orientations.clear(); // clear vector orientations
 
-    // Save path to PathList
+    // Traverse from TailNode (target) to start and store the path in reverse order
     Node* CurNode = TailNode;
     while(CurNode != NULL)
     {
-        PathList.push_back(CurNode);
+        path.push_back(CurNode->point);
         CurNode = CurNode->parent;
     }
 
-    // Save path to vector<Point>
-    int length = PathList.size();
-    for(int i = 0;i < length;i++)
+    // Reverse the path to go from start to target
+    std::reverse(path.begin(), path.end());
+
+    // Handle edge case for single-point path
+    if (path.size() == 1) 
     {
-        path.push_back(PathList.back()->point);
-        PathList.pop_back();
+        orientations.push_back(0.0); // Default orientation for a single point (no movement)
+        return;
+    }
+
+    // Calculate orientation for the first point (start)
+    {
+        Point nextPoint = path[1];
+        Point startPoint = path[0];
+        int dx = nextPoint.x - startPoint.x;
+        int dy = nextPoint.y - startPoint.y;
+        double startOrientation = atan2(dy, dx);
+        orientations.push_back(startOrientation);
+    }
+
+    // Calculate orientations for the path from the second point to the last point
+    for(size_t i = 1; i < path.size() - 1; ++i)
+    {
+        Point prevPoint = path[i-1];
+        Point curPoint = path[i];
+        Point nextPoint = path[i+1];
+        int dx = nextPoint.x - curPoint.x;
+        int dy = nextPoint.y - curPoint.y;
+        double orientation = atan2(dy, dx);
+        orientations.push_back(orientation);
+    }
+
+    // Calculate orientation for the last point (end)
+    {
+        Point prevPoint = path[path.size() - 2];
+        Point endPoint = path.back();
+        int dx = endPoint.x - prevPoint.x;
+        int dy = endPoint.y - prevPoint.y;
+        double endOrientation = atan2(dy, dx);
+        orientations.push_back(endOrientation);
     }
 
     // Release memory
-    while(OpenList.size()) {
+    while(!OpenList.empty()) {
         Point CurPoint = OpenList.top().second;
         OpenList.pop();
         int index = point2index(CurPoint);
@@ -237,5 +271,6 @@ void Astar::GetPath(Node* TailNode, vector<Point>& path)
     }
     OpenDict.clear();
 }
+
 
 }

@@ -1,7 +1,3 @@
-//
-// Created by lihao on 19-7-9.
-//
-
 #ifndef ASTAR_H
 #define ASTAR_H
 
@@ -12,7 +8,6 @@
 
 using namespace std;
 using namespace cv;
-
 
 namespace pathplanning{
 
@@ -41,7 +36,6 @@ struct cmp
     }
 };
 
-
 struct AstarConfig{
     bool Euclidean;         // true/false
     int OccupyThresh;       // 0~255
@@ -59,7 +53,7 @@ public:
     // Interface function
     void InitAstar(Mat& _Map, AstarConfig _config = AstarConfig());
     void InitAstar(Mat& _Map, Mat& Mask, AstarConfig _config = AstarConfig());
-    void PathPlanning(Point _startPoint, Point _targetPoint, vector<Point>& path);
+    void PathPlanning(Point _startPoint, Point _targetPoint, vector<Point>& path, vector<double>& orientations);
     void DrawPath(Mat& _Map, vector<Point>& path, InputArray Mask = noArray(), Scalar color = Scalar(0, 0, 255),
             int thickness = 1, Scalar maskcolor = Scalar(255, 255, 255));
 
@@ -73,10 +67,10 @@ public:
 private:
     void MapProcess(Mat& Mask);
     Node* FindPath();
-    void GetPath(Node* TailNode, vector<Point>& path);
+    void GetPath(Node* TailNode, vector<Point>& path, vector<double>& orientations); // Updated function
 
 private:
-    //Object
+    // Object
     Mat Map;
     Point startPoint, targetPoint;
     Mat neighbor;
@@ -87,11 +81,10 @@ private:
     priority_queue<pair<int, Point>, vector<pair<int, Point>>, cmp> OpenList; // open list
     unordered_map<int, Node*> OpenDict; // open dict
     vector<Node*> PathList;  // path list
+
+    vector<double> orientations;  // Added vector to store the orientations
 };
 
 }
-
-
-
 
 #endif //ASTAR_H

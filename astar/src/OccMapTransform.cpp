@@ -1,7 +1,3 @@
-//
-// Created by lihao on 19-7-10.
-//
-
 #include "OccMapTransform.h"
 
 

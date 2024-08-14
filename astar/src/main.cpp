@@ -34,6 +34,7 @@ bool startpoint_flag;
 bool targetpoint_flag;
 bool start_flag;
 int rate;
+geometry_msgs::Quaternion target_orientation; // New global variable for target orientation
 
 //-------------------------------- Callback function ---------------------------------//
 void MapCallback(const nav_msgs::OccupancyGrid& msg)
@@ -84,12 +85,16 @@ void MapCallback(const nav_msgs::OccupancyGrid& msg)
 
 void StartPointCallback(const geometry_msgs::Pose& msg)
 {
+    // Convert map position to image coordinates
     Point2d src_point = Point2d(msg.position.x, msg.position.y);
     OccGridParam.Map2ImageTransform(src_point, startPoint);
 
+    // Process orientation data
+    double yaw = tf::getYaw(msg.orientation); // Convert quaternion to yaw angle (in radians)
+    ROS_INFO("Received start point: (%f, %f), orientation: %f radians", msg.position.x, msg.position.y, yaw);
+
     // Set flag
     startpoint_flag = true;
-    ROS_INFO("Received start point: (%f, %f)", msg.position.x, msg.position.y);
     if(map_flag && startpoint_flag && targetpoint_flag)
     {
         start_flag = true;
@@ -98,12 +103,19 @@ void StartPointCallback(const geometry_msgs::Pose& msg)
 
 void TargetPointCallback(const geometry_msgs::Pose& msg)
 {
+    // Convert map position to image coordinates
     Point2d src_point = Point2d(msg.position.x, msg.position.y);
     OccGridParam.Map2ImageTransform(src_point, targetPoint);
 
+    // Store the orientation
+    target_orientation = msg.orientation;
+
+    // Process orientation data
+    double yaw = tf::getYaw(msg.orientation); // Convert quaternion to yaw angle (in radians)
+    ROS_INFO("Received target point: (%f, %f), orientation: %f radians", msg.position.x, msg.position.y, yaw);
+
     // Set flag
     targetpoint_flag = true;
-    ROS_INFO("Received target point: (%f, %f)", msg.position.x, msg.position.y);
     if(map_flag && startpoint_flag && targetpoint_flag)
     {
         start_flag = true;
@@ -149,13 +161,14 @@ int main(int argc, char * argv[])
             double start_time = ros::Time::now().toSec();
             // Start planning path
             vector<Point> PathList;
-            astar.PathPlanning(startPoint, targetPoint, PathList);
+            vector<double> orientations; // Create a vector to store orientations
+            astar.PathPlanning(startPoint, targetPoint, PathList, orientations); // Updated call to include orientations
             if(!PathList.empty())
             {
                 path.header.stamp = ros::Time::now();
                 path.header.frame_id = "map";
                 path.poses.clear();
-                for(int i=0;i<PathList.size();i++)
+                for(int i = 0; i < PathList.size(); i++)
                 {
                     Point2d dst_point;
                     OccGridParam.Image2MapTransform(PathList[i], dst_point);
@@ -166,6 +179,22 @@ int main(int argc, char * argv[])
                     pose_stamped.pose.position.x = dst_point.x;
                     pose_stamped.pose.position.y = dst_point.y;
                     pose_stamped.pose.position.z = 0;
+
+                    if (i == PathList.size() - 1)
+                    {
+                        // This is the last node, replace orientation with target pose orientation
+                        pose_stamped.pose.orientation = target_orientation;
+                    }
+                    else
+                    {
+                        // Convert orientation to quaternion and assign it to pose_stamped.pose.orientation
+                        tf::Quaternion q = tf::createQuaternionFromYaw(orientations[i]);
+                        pose_stamped.pose.orientation.x = q.x();
+                        pose_stamped.pose.orientation.y = q.y();
+                        pose_stamped.pose.orientation.z = q.z();
+                        pose_stamped.pose.orientation.w = q.w();
+                    }
+
                     path.poses.push_back(pose_stamped);
                 }
                 path_pub.publish(path);
