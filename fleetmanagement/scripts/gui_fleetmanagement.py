@@ -2,9 +2,10 @@
 
 import rospy
 from std_msgs.msg import String
+from std_msgs.msg import Int32
+from std_msgs.msg import Float32
 from nav_msgs.msg import OccupancyGrid
 from geometry_msgs.msg import PoseWithCovarianceStamped
-from detection_msgs.msg import BoundingBoxes
 from tkinter import font as tkFont
 from tkinter import ttk
 from tkinter import TclError
@@ -23,10 +24,6 @@ class FleetManagementUI:
         rospy.init_node('gui_fleet_management', anonymous=True)
         self.launch_map_process = subprocess.Popen(["roslaunch", "navigation", "map.launch"])
         self.fleet_management_process = subprocess.Popen(["rosrun", "fleetmanagement", "fleetmanagement.py"])
-        self.AGV01_management_process = subprocess.Popen(["rosrun", "fleetmanagement", "AGV01_management.py"])
-        self.AGV02_management_process = subprocess.Popen(["rosrun", "fleetmanagement", "AGV02_management.py"])
-        self.AGV03_management_process = subprocess.Popen(["rosrun", "fleetmanagement", "AGV03_management.py"])
-        self.AGV04_management_process = subprocess.Popen(["rosrun", "fleetmanagement", "AGV04_management.py"])
 
         self.root = root
         self.root.title("Fleet Management")
@@ -50,9 +47,10 @@ class FleetManagementUI:
         self.current_images = [0, 0, 0, 0]
         self.processes = [None, None, None, None]
         self.battery_of_agv = [100, 100, 100, 100]
+        self.mission_counter = [0]
         self.dropdown_vars = []
         self.recent_missions = []
-        self.station = ["A", "B", "C", "D", "E", "G", "Park 1", "Park 2", "Park 3", "Park 4"]
+        self.station = ["A", "B", "C", "D", "E", "G", "P1", "P2", "P3", "P4"]
         self.selectAGV = ["Automatic", "AGV01", "AGV02", "AGV03", "AGV04"]
         self.agv_status = ["Not connect", "Not connect", "Not connect", "Not connect"]
         self.tasks = {
@@ -62,16 +60,22 @@ class FleetManagementUI:
             'AGV04': {'first': ' ', 'last': ' '}
         }
         self.start_agv_coordinates = {
-            'AGV01': (1.000, -1.000, 0.000, 0.000, 0.000, 0.000, 1.000),
-            'AGV02': (2.000, -1.000, 0.000, 0.000, 0.000, 0.000, 1.000),
-            'AGV03': (3.000, -1.000, 0.000, 0.000, 0.000, 0.000, 1.000),
-            'AGV04': (1.000, -10.000, 0.000, 0.000, 0.000, 0.000, 1.000)
+            'AGV01': (1.050, -1.000, 0.000, 0.000, 0.000, 0.000, 1.000),
+            'AGV02': (17.900, -7.800, 0.000, 0.000, 0.000, -0.707, 0.707),
+            'AGV03': (1.050, -1.000, 0.000, 0.000, 0.000, 0.000, 1.000),
+            'AGV04': (2.900, -6.500, 0.000, 0.000, 0.000, 0.707, 0.707)
         }
         self.emergency_status = {
             'AGV01': False,
             'AGV02': False,
             'AGV03': False,
             'AGV04': False
+        }
+        self.estimated_time = {
+            'AGV01': ' ',
+            'AGV02': ' ',
+            'AGV03': ' ',
+            'AGV04': ' '
         }
 
         # ros_Subscriber
@@ -81,16 +85,17 @@ class FleetManagementUI:
             'AGV03': rospy.Subscriber('/agv03/Emergen', String, self.ros_subscribe_emergency, 'AGV03'),
             'AGV04': rospy.Subscriber('/agv04/Emergen', String, self.ros_subscribe_emergency, 'AGV04')
         }
-
-        self.detection_subscribers = {
-            'AGV01': rospy.Subscriber('/agv01/yolov5/detections', BoundingBoxes, self.ros_subscribe_detection, 'AGV01'),
-            'AGV02': rospy.Subscriber('/agv02/yolov5/detections', BoundingBoxes, self.ros_subscribe_detection, 'AGV02'),
-            'AGV03': rospy.Subscriber('/agv03/yolov5/detections', BoundingBoxes, self.ros_subscribe_detection, 'AGV03'),
-            'AGV04': rospy.Subscriber('/agv04/yolov5/detections', BoundingBoxes, self.ros_subscribe_detection, 'AGV04')
+        self.estimated_time = {
+            'AGV01': rospy.Subscriber('/agv01/estimated_time', Float32, self.ros_subscribe_estimated_time, 'AGV01'),
+            'AGV02': rospy.Subscriber('/agv02/estimated_time', Float32, self.ros_subscribe_estimated_time, 'AGV02'),
+            'AGV03': rospy.Subscriber('/agv03/estimated_time', Float32, self.ros_subscribe_estimated_time, 'AGV03'),
+            'AGV04': rospy.Subscriber('/agv04/estimated_time', Float32, self.ros_subscribe_estimated_time, 'AGV04')
         }
 
         rospy.Subscriber('/task', String, self.ros_subscribe_task)
         rospy.Subscriber('/agv_status', String, self.ros_subscribe_agv_status)
+        rospy.Subscriber('/object_detection', String, self.ros_subscribe_object_detection)
+        rospy.Subscriber('/counter', Int32, self.ros_subscribe_counter)
 
         # ros_Publisher
         self.agv_status_pub = rospy.Publisher('/agv_status', String, queue_size=10, latch=True)
@@ -117,6 +122,7 @@ class FleetManagementUI:
         self.update_battery()
         self.periodic_battery_update()
         self.update_emergency_status()
+        self.update_mission_counter()
 
         self.detection_coords = {'AGV01': {}, 'AGV02': {}, 'AGV03': {}, 'AGV04': {}}
         self.detection_images = []
@@ -133,33 +139,31 @@ class FleetManagementUI:
                 self.fleet_management_process.terminate()
                 self.fleet_management_process.wait()
 
-            if self.AGV01_management_process:
-                self.AGV01_management_process.terminate()
-                self.AGV01_management_process.wait()
-            
-            if self.AGV02_management_process:
-                self.AGV02_management_process.terminate()
-                self.AGV02_management_process.wait()
+            for processes in self.processes:
+                if processes:
+                    nav_process = processes.get('nav')
+                    if nav_process:
+                        os.killpg(os.getpgid(nav_process.pid), signal.SIGTERM)
+                        time.sleep(2)
+                        if nav_process.poll() is None:
+                            os.killpg(os.getpgid(nav_process.pid), signal.SIGKILL)
+                            time.sleep(1)
+                            if nav_process.poll() is None:
+                                print("Navigation process may still be running.")
+                        else:
+                            print("Navigation process terminated with SIGTERM.")
 
-            if self.AGV03_management_process:
-                self.AGV03_management_process.terminate()
-                self.AGV03_management_process.wait()
-
-            if self.AGV04_management_process:
-                self.AGV04_management_process.terminate()
-                self.AGV04_management_process.wait()
-
-            for process in self.processes:
-                if process:
-                    os.killpg(os.getpgid(process.pid), signal.SIGTERM)
-                    time.sleep(2)
-                    if process.poll() is None:
-                        os.killpg(os.getpgid(process.pid), signal.SIGKILL)
-                        time.sleep(1)
-                        if process.poll() is None:
-                            print(f"Process may still be running.")
-                    else:
-                        print(f"Process terminated with SIGTERM.")
+                    management_process = processes.get('management')
+                    if management_process:
+                        os.killpg(os.getpgid(management_process.pid), signal.SIGTERM)
+                        time.sleep(2)
+                        if management_process.poll() is None:
+                            os.killpg(os.getpgid(management_process.pid), signal.SIGKILL)
+                            time.sleep(1)
+                            if management_process.poll() is None:
+                                print("Management process may still be running.")
+                        else:
+                            print("Management process terminated with SIGTERM.")
 
             # # Kill all nodes except /rosout
             # nodes = subprocess.check_output(['rosnode', 'list']).decode().split()
@@ -203,7 +207,6 @@ class FleetManagementUI:
 
     def load_environment(self):
         path_file = os.path.dirname(__file__)
-        self.font_name = os.path.join(path_file, "../font/Prompt/Prompt-Regular.ttf")
         self.bg_image = Image.open(os.path.join(path_file, "../image/background.png"))
         self.Icon = ImageTk.PhotoImage(Image.open(os.path.join(path_file, "../image/Icon.png")))
         self.buttonSSHon = ImageTk.PhotoImage(Image.open(os.path.join(path_file, "../image/button_on.png")))
@@ -228,7 +231,7 @@ class FleetManagementUI:
         self.canvas.create_image(0, 0, image=self.bg_photo, anchor="nw")
 
     def get_font(self, size, weight="normal"):
-        return tkFont.Font(family=self.font_name, size=size, weight=weight)
+        return tkFont.Font(family="Prompt Regular", size=size, weight=weight)
 
     def draw_text(self, x, y, text, size, color, weight, tag):
         custom_font = self.get_font(size, weight)
@@ -238,7 +241,7 @@ class FleetManagementUI:
         self.create_launch_button(0, 60, 128)
         self.create_launch_button(1, 60, 342)
         self.create_launch_button(2, 60, 556)
-        self.create_launch_button(3, 60, 769)
+        self.create_launch_button(3, 60, 770)
 
     def create_launch_button(self, index, x, y):
         button = tk.Label(self.root, image=self.buttonSSHoff, borderwidth=0, highlightthickness=0, bg="#D9D9D9")
@@ -254,17 +257,30 @@ class FleetManagementUI:
 
     def start_launch(self, AGV_index):
         commands = [
-            "roslaunch navigation agv01_navigation.launch",
-            "roslaunch navigation agv02_navigation.launch",
-            "roslaunch navigation agv03_navigation.launch",
-            "roslaunch navigation agv04_navigation.launch"
+            [
+                "roslaunch navigation agv01_navigation.launch",
+                "rosrun fleetmanagement AGV01_management.py"
+            ],
+            [
+                "roslaunch navigation agv02_navigation.launch",
+                "rosrun fleetmanagement AGV02_management.py"
+            ],
+            [
+                "roslaunch navigation agv03_navigation.launch",
+                "rosrun fleetmanagement AGV03_management.py"
+            ],
+            [
+                "roslaunch navigation agv04_navigation.launch",
+                "rosrun fleetmanagement AGV04_management.py"
+            ]
         ]
         try:
-            process = subprocess.Popen(commands[AGV_index], shell=True, preexec_fn=os.setsid)
+            nav_process = subprocess.Popen(commands[AGV_index][0], shell=True, preexec_fn=os.setsid)
+            management_process = subprocess.Popen(commands[AGV_index][1], shell=True, preexec_fn=os.setsid)
             time.sleep(3)
-            
-            if process.poll() is None:
-                self.processes[AGV_index] = process
+
+            if nav_process.poll() is None and management_process.poll() is None:
+                self.processes[AGV_index] = {'nav': nav_process, 'management': management_process}
                 self.current_images[AGV_index] = 1
                 self.buttons[AGV_index].config(image=self.buttonSSHon)
                 self.agv_status[AGV_index] = "Available"
@@ -278,7 +294,7 @@ class FleetManagementUI:
                         rospy.logwarn(f"Invalid start coordinates for {agv_id}: {coords}")
                         self.show_custom_message("Initialization Error", f"Invalid start coordinates for {agv_id}")
                         return
-                
+
                     initial_pose = PoseWithCovarianceStamped()
                     initial_pose.header.frame_id = "map"
                     initial_pose.pose.pose.position.x = coords[0]
@@ -299,7 +315,8 @@ class FleetManagementUI:
 
             else:
                 self.show_custom_message("Connection Error", f"Failed to connect to AGV{AGV_index + 1}")
-                process.terminate()
+                nav_process.terminate()
+                management_process.terminate()
                 self.processes[AGV_index] = None
                 self.current_images[AGV_index] = 0
                 self.buttons[AGV_index].config(image=self.buttonSSHoff)
@@ -316,17 +333,31 @@ class FleetManagementUI:
             self.ros_publish_agv_status()
 
     def stop_launch(self, AGV_index):
-        process = self.processes[AGV_index]
-        if process:
-            os.killpg(os.getpgid(process.pid), signal.SIGTERM)
-            time.sleep(2)
-            if process.poll() is None:
-                os.killpg(os.getpgid(process.pid), signal.SIGKILL)
-                time.sleep(1)
-                if process.poll() is None:
-                    print(f"Process for AGV{AGV_index + 1} may still be running.")
-            else:
-                print(f"Process for AGV{AGV_index + 1} terminated with SIGTERM.")
+        processes = self.processes[AGV_index]
+        if processes:
+            nav_process = processes.get('nav')
+            if nav_process:
+                os.killpg(os.getpgid(nav_process.pid), signal.SIGTERM)
+                time.sleep(2)
+                if nav_process.poll() is None:
+                    os.killpg(os.getpgid(nav_process.pid), signal.SIGKILL)
+                    time.sleep(1)
+                    if nav_process.poll() is None:
+                        print(f"Navigation process for AGV{AGV_index + 1} may still be running.")
+                else:
+                    print(f"Navigation process for AGV{AGV_index + 1} terminated with SIGTERM.")
+
+            management_process = processes.get('management')
+            if management_process:
+                os.killpg(os.getpgid(management_process.pid), signal.SIGTERM)
+                time.sleep(2)
+                if management_process.poll() is None:
+                    os.killpg(os.getpgid(management_process.pid), signal.SIGKILL)
+                    time.sleep(1)
+                    if management_process.poll() is None:
+                        print(f"Management process for AGV{AGV_index + 1} may still be running.")
+                else:
+                    print(f"Management process for AGV{AGV_index + 1} terminated with SIGTERM.")
 
             self.processes[AGV_index] = None
 
@@ -356,7 +387,10 @@ class FleetManagementUI:
         self.ros_publish_agv_status()
 
         agv_id = f'AGV0{AGV_index + 1}'
+        self.emergency_status[agv_id] = False
         self.tasks[agv_id] = {'first': '', 'last': ''}
+        self.estimated_time[agv_id] = ' '
+        self.update_estimated_time()
         self.update_tasks()
 
     def create_dropdown_select_agv(self):
@@ -379,6 +413,7 @@ class FleetManagementUI:
                         borderwidth=0,
                         focusthickness=0,
                         highlightthickness=0)
+
         style.map('Custom.TCombobox',
                 background=[('active', 'white')],
                 fieldbackground=[('readonly', 'white')],
@@ -390,11 +425,12 @@ class FleetManagementUI:
                 bordercolor=[('focus', 'white')],
                 relief=[('focus', 'flat')])
 
+        # Layout ของ Combobox ต้องกำหนดค่าให้ถูกต้อง
         style.layout('Custom.TCombobox', [
             ('Combobox.field', {'expand': '1', 'sticky': 'nswe', 'children': [
                 ('Combobox.padding', {'expand': '1', 'sticky': 'nswe', 'children': [
                     ('Combobox.textarea', {'sticky': 'nswe'}),
-                    ('Combobox.downarrow', {'side': 'right', 'sticky': 'e'})
+                    ('Combobox.downarrow', {'side': 'right', 'sticky': ''})
                 ]})
             ]})
         ])
@@ -565,7 +601,7 @@ class FleetManagementUI:
             'AGV01': (228, 198),
             'AGV02': (228, 412),
             'AGV03': (228, 626),
-            'AGV04': (228, 839)
+            'AGV04': (228, 840)
         }
         agv_number = ['AGV01', 'AGV02', 'AGV03', 'AGV04']
         for agv_index in range(4):
@@ -588,8 +624,9 @@ class FleetManagementUI:
         self.canvas.delete("emergency")
 
         for agv_name, position in coords.items():
-            if self.emergency_status[agv_name]:
-                self.canvas.create_image(position[0], position[1], image=self.imgEmergency, anchor=tk.CENTER, tag="emergency")
+            if self.agv_status[int(agv_name[-2:]) - 1] != "Not connect":
+                if self.emergency_status[agv_name]:
+                    self.canvas.create_image(position[0], position[1], image=self.imgEmergency, anchor=tk.CENTER, tag="emergency")
 
         self.canvas.after(100, self.update_emergency_status)
     
@@ -599,9 +636,9 @@ class FleetManagementUI:
         self.canvas.delete("Battery_AGV03")
         self.canvas.delete("Battery_AGV04")
 
-        self.update_battery_status(0, 331, 128, self.battery_of_agv[0], self.agv_status[0])
-        self.update_battery_status(1, 331, 342, self.battery_of_agv[1], self.agv_status[1])
-        self.update_battery_status(2, 331, 556, self.battery_of_agv[2], self.agv_status[2])
+        self.update_battery_status(0, 331, 127, self.battery_of_agv[0], self.agv_status[0])
+        self.update_battery_status(1, 331, 341, self.battery_of_agv[1], self.agv_status[1])
+        self.update_battery_status(2, 331, 555, self.battery_of_agv[2], self.agv_status[2])
         self.update_battery_status(3, 331, 769, self.battery_of_agv[3], self.agv_status[3])
 
     def update_battery_status(self, index, x, y, battery_level, status):
@@ -625,85 +662,34 @@ class FleetManagementUI:
         self.update_battery()
         self.root.after(100, self.periodic_battery_update)
 
-    def shift_detections(self):
-        # Move existing detections to the next position
-        for idx in range(len(self.detection_images)):
-            x, y, img, agv_id = self.detection_images[idx]
-            self.detection_images[idx] = (x + 220, y, img, agv_id)
+    def update_mission_counter(self):
+        mission_counter_info = tk.Label(self.root, text=self.mission_counter, width=15, height=2, 
+                                    bg="white", fg="black", anchor="center", font=(self.get_font(14)))
+        mission_counter_info.place(x=1580, y=897, width=177, height=32)
 
-    def draw_detections(self):
-        # Store current detection positions
-        current_detections = {tag: self.canvas.coords(tag) for tag in self.canvas.find_withtag("detection")}
+    def update_estimated_time(self):
+        coords = {
+            'AGV01': (261, 272),
+            'AGV02': (261, 486),
+            'AGV03': (261, 700),
+            'AGV04': (261, 914)
+        }
 
-        # Determine which tags need to be removed
-        tags_to_remove = set(current_detections.keys())
-        for (x, y, img, agv_id) in self.detection_images:
-            tag = f"detection_{agv_id}_{x}_{y}"
-            if tag in tags_to_remove:
-                tags_to_remove.remove(tag)
+        for agv_name, (x, y) in coords.items():
+            agv_index = int(agv_name[-2:]) - 1
+            status = self.agv_status[agv_index]
+
+            if status == 'Go to First Station' or status == 'Go to Last Station':
+                lable_info = self.estimated_time[agv_name]
             else:
-                # Remove outdated detections
-                self.canvas.delete(tag)
+                lable_info = ' '
 
-        # Draw or update detections
-        for i, (x, y, img, agv_id) in enumerate(self.detection_images):
-            tag = f"detection_{agv_id}_{x}_{y}"
-            
-            if self.canvas.find_withtag(tag):
-                # Update existing detection
-                self.canvas.coords(tag, x, y)
-                self.canvas.itemconfig(tag, image=img)
-            else:
-                # Draw new detection
-                self.canvas.create_image(x, y, image=img, anchor="nw", tags=tag)
-                self.canvas.create_text(x + 150, y + 15, text=agv_id, fill="black", font=('Arial', 12, 'bold'), tags=tag)
-
-        # Raise all detection tags to the top
-        self.canvas.tag_raise("detection")
-
-    def ros_subscribe_detection(self, data, agv_id):
-        detection_image = None
-        new_detections = []
-        new_detection_found = False
-        detected_objects = [bbox.Class for bbox in data.bounding_boxes]
-
-        if not detected_objects:
-            return
-
-        for bbox in data.bounding_boxes:
-            if bbox.Class == "people":
-                detection_image = self.imgObstacle_human
-            elif bbox.Class == "box":
-                detection_image = self.imgObstacle_box
-
-            if detection_image:
-                tag = f"detection_{agv_id}_{self.detection_x}_{self.detection_y}"
-                if tag not in self.canvas.find_withtag("detection"):
-                    # New detection, so we need to add it
-                    new_detections.append((self.detection_x, self.detection_y, detection_image, agv_id))
-                    new_detection_found = True
-                    self.detection_coords[agv_id][bbox.Class] = (self.detection_x, self.detection_y)
-                    self.detection_x += 220
-                else:
-                    # Existing detection; use the coordinates
-                    existing_x, existing_y = self.detection_coords[agv_id].get(bbox.Class, (self.detection_x, self.detection_y))
-                    new_detections.append((existing_x, existing_y, detection_image, agv_id))
-
-        if new_detection_found:
-            # If a new detection was found, update detection images
-            self.shift_detections()
-            self.detection_images = new_detections
-            self.draw_detections()
-        else:
-            # No new detection, just update the existing positions
-            self.detection_images = new_detections
-            self.draw_detections()
-    
-    def ros_subscribe_emergency(self, msg, agv_name):
-        if msg.data == 'on':
-            self.emergency_status[agv_name] = True
-        elif msg.data == 'off':
-            self.emergency_status[agv_name] = False
+            time_info = tk.Label(
+                self.root, text=lable_info, width=15, height=2,
+                bg="#f5f5f5", fg="black", anchor="center", font=self.get_font(13)
+            )
+            time_info.place(x=x, y=y, width=116, height=22)
+            rospy.sleep(0.5)
 
     def ros_subscribe_agv_status(self, msg):
         self.agv_status = msg.data.split(', ')
@@ -715,7 +701,7 @@ class FleetManagementUI:
                     self.emergency_subscribers[agv_name] = None
             else:
                 if not self.emergency_subscribers.get(agv_name):
-                    self.emergency_subscribers[agv_name] = rospy.Subscriber(f'/{agv_name}/Emergen', 
+                    self.emergency_subscribers[agv_name] = rospy.Subscriber(f'/{agv_name.lower()}/Emergen', 
                         String, self.ros_subscribe_emergency, agv_name)
         self.update_status()
         self.update_dropdown_state()
@@ -732,6 +718,69 @@ class FleetManagementUI:
 
         self.update_tasks()
         self.on_task_update(task_data)
+
+    def ros_subscribe_emergency(self, msg, agv_name):
+        if msg.data == 'on':
+            self.emergency_status[agv_name] = True
+        elif msg.data == 'off':
+            self.emergency_status[agv_name] = False
+
+    def ros_subscribe_object_detection(self, msg):
+        detections = msg.data.split(' | ')
+        agv_names = ["AGV01", "AGV02", "AGV03", "AGV04"]
+        obstacle = []
+
+        for i, detection in enumerate(detections):
+            if i >= len(agv_names):
+                break
+
+            agv_name, objects_str = detection.split(' : ', 1)
+            agv_name = agv_name.strip()
+            objects_str = objects_str.strip()
+
+            if objects_str:
+                detected_objects = [obj for obj in objects_str.split(', ') if obj in ["people", "box"]]
+                obstacle.extend([(agv_name, obj) for obj in detected_objects])
+
+        self.update_obstacle_notifications(obstacle)
+
+    def update_obstacle_notifications(self, obstacle):
+        obstacle_images = {
+            "people": self.imgObstacle_human,
+            "box": self.imgObstacle_box
+        }
+        positions = [
+            (436, 870, "Obstacle1", "AGVname1"),
+            (655, 870, "Obstacle2", "AGVname2"),
+            (874, 870, "Obstacle3", "AGVname3"),
+            (1093, 870, "Obstacle4", "AGVname4")
+        ]
+
+        for _, _, obstacle_tag, agv_tag in positions:
+            self.canvas.delete(obstacle_tag)
+            self.canvas.delete(agv_tag)
+
+        obstacle_to_display = obstacle[:4]
+        for i, (pos_x, pos_y, obstacle_tag, agv_tag) in enumerate(positions):
+            if i < len(obstacle_to_display):
+                agv_name, obj_type = obstacle_to_display[i]
+                image = obstacle_images.get(obj_type, None)
+                if image:
+                    self.canvas.create_image(pos_x, pos_y, image=image, anchor="nw", tags=obstacle_tag)
+                    self.draw_text(pos_x + 148, pos_y + 9, f"{agv_name}", size=11, color="black", weight="normal", tag=agv_tag)
+            else:
+                break
+
+        rospy.sleep(0.5)
+    
+    def ros_subscribe_counter(self, msg):
+        self.mission_counter = msg.data
+        self.update_mission_counter()
+
+    def ros_subscribe_estimated_time(self, msg, agv_name):
+        self.estimated_time_info = round(msg.data, 2)
+        self.estimated_time[agv_name] = self.estimated_time_info
+        self.update_estimated_time()
 
     def ros_publish_agv_status(self):
         agv_status_info = ', '.join(self.agv_status)
