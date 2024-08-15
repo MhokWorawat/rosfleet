@@ -26,7 +26,7 @@ class AGV_management:
             'A': (2.900, -6.500, 0.000, 0.000, 0.000, 0.707, 0.707),
             'B': (7.950, -1.000, 0.000, 0.000, 0.000, 0.000, 1.000),
             'C': (14.950, -9.200, 0.000, 0.000, 0.000, 0.000, 1.000),
-            'D': (6.050, -10.250, 0.000, 0.000, 0.000, -0.707, 0.707),
+            'D': (6.050, -10.00, 0.000, 0.000, 0.000, -0.707, 0.707),
             'E': (19.600, -10.300, 0.000, 0.000, 0.000, 0.000, 1.000),
             'G': (16.600, -20.850, 0.000, 0.000, 0.000, 1.000, 0.000),
             'P1': (1.050, -9.700, 0.000, 0.000, 0.000, 0.000, 1.000),
@@ -103,10 +103,10 @@ class AGV_management:
             # self.load_and_send_path(first_station, last_station)
             self.send_goal(target_coords)
             self.wait_for_arrival(target_coords)
-            self.publish_stop_command()
-            rospy.sleep(10)
+            # self.publish_stop_command()
             self.agv_status[int(self.agv_name[-2:]) - 1] = "Go to Last Station"
             self.publish_agv_status()
+            rospy.sleep(5)
 
         if self.agv_status[int(self.agv_name[-2:]) - 1] == "Go to Last Station":
             rospy.logdebug(f"Loading path from {first_station} to {last_station}")
@@ -114,8 +114,8 @@ class AGV_management:
             rospy.logdebug(f"Sending {self.agv_name} to last station: {last_station} with coordinates {target_coords}")
             self.send_goal(target_coords)
             self.wait_for_arrival(target_coords)
-            self.publish_stop_command()
-            rospy.sleep(10)
+            # self.publish_stop_command()
+            rospy.sleep(5)
             self.request_parking_pub.publish(self.agv_name)
 
     def closest_parking_callback(self, msg):
