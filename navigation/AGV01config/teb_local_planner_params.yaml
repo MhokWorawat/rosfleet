@@ -1,6 +1,6 @@
 TebLocalPlannerROS:
 
-  odom_topic: /agv01/odom
+  odom_topic: /agv01/odometry/filtered
 
   # Trajectory
   teb_autosize: True
@@ -27,7 +27,7 @@ TebLocalPlannerROS:
 
   footprint_model: 
     type: "polygon"
-    vertices: [[-0.35, -0.25], [0.35, -0.25], [0.35, 0.25], [-0.35, 0.25]]
+    vertices: [[-0.35, -0.225], [0.35, -0.225], [0.35, 0.225], [-0.35, 0.225]]
 
   # GoalTolerance
   xy_goal_tolerance: 0.01

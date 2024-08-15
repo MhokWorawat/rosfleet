@@ -33,12 +33,12 @@
         <node pkg="odometry" type="agv04_odom" name="agv04_odom" output="screen"/>
 
         <!-- Static transforms -->
+        <!-- <node name="map2odom"   pkg="tf" type="static_transform_publisher" args="1.05 -9.7 0 0 0 0 map agv04_odom 100"/> -->
         <node name="base2laser" pkg="tf" type="static_transform_publisher" args="0.08 0 0.15 3.14 0 0 agv04_base agv04_laser 100"/>
-        <node name="odom_to_base" pkg="tf" type="static_transform_publisher" args="0 0 0 0 0 0 agv04_odom_localization agv04_base_localization 100"/>
 
-        <node pkg="robot_localization" type="ekf_localization_node" name="ekf_localization_node_odom" output="screen">
+        <!-- <node pkg="robot_localization" type="ekf_localization_node" name="ekf_localization_node_odom" output="screen">
             <rosparam command="load" file="$(find navigation)/AGV04config/ekf_localization_param.yaml" />
-        </node>
+        </node> -->
 
         <!-- Run AMCL -->
         <include file="$(find amcl)/examples/amcl.launch">

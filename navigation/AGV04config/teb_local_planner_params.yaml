@@ -1,6 +1,6 @@
 TebLocalPlannerROS:
 
-  odom_topic: /agv04/odometry/filtered
+  odom_topic: /agv04/odom
 
   # Trajectory
   teb_autosize: True
