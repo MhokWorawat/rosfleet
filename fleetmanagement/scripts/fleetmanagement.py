@@ -1,13 +1,11 @@
 #!/usr/bin/env python3
 
 import rospy
-from std_msgs.msg import String
+from std_msgs.msg import String, Int32
 from std_msgs.msg import Int32
 from nav_msgs.srv import GetPlan, GetPlanRequest
 from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped
 from detection_msgs.msg import BoundingBoxes
-from geometry_msgs.msg import Twist
-from threading import Timer
 import math
 
 class FleetManagement:
@@ -37,13 +35,13 @@ class FleetManagement:
         self.station_coordinates = {
             'A': (2.900, -6.500, 0.000, 0.000, 0.000, 0.707, 0.707),
             'B': (7.950, -1.000, 0.000, 0.000, 0.000, 0.000, 1.000),
-            'C': (14.950, -9.200, 0.000, 0.000, 0.000, 0.000, 1.000),
-            'D': (6.050, -10.00, 0.000, 0.000, 0.000, -0.707, 0.707),
-            'E': (19.600, -10.300, 0.000, 0.000, 0.000, 0.000, 1.000),
+            'C': (14.650, -9.400, 0.000, 0.000, 0.000, 1.000, 0.000),
+            'D': (6.050, -10.300, 0.000, 0.000, 0.000, -0.707, 0.707),
+            'E': (19.600, -10.300, 0.000, 0.000, 0.000, 1.000, 0.000),
             'G': (16.600, -20.850, 0.000, 0.000, 0.000, 1.000, 0.000),
             'P1': (1.050, -9.700, 0.000, 0.000, 0.000, 0.000, 1.000),
             'P2': (17.900, -7.800, 0.000, 0.000, 0.000, -0.707, 0.707),
-            'P3': (1.050, -1.000, 0.000, 0.000, 0.000, 0.000, 1.000),
+            'P3': (0.850, -1.000, 0.000, 0.000, 0.000, 0.000, 1.000),
             'P4': (24.700, -9.750, 0.000, 0.000, 0.000, 1.000, 0.000)
         }
         self.stop_publishing = {}
@@ -55,12 +53,6 @@ class FleetManagement:
         self.object_detection_pub = rospy.Publisher('/object_detection', String, queue_size=10)
         self.closest_parking_pub = rospy.Publisher('/closest_parking', String, queue_size=10)
         self.task_pub = rospy.Publisher('/task', String, queue_size=10)
-        self.cmd_vel_pub = {
-            'AGV01': rospy.Publisher(f'/agv01/cmd_vel', Twist, queue_size=10),
-            'AGV02': rospy.Publisher(f'/agv02/cmd_vel', Twist, queue_size=10),
-            'AGV03': rospy.Publisher(f'/agv03/cmd_vel', Twist, queue_size=10),
-            'AGV04': rospy.Publisher(f'/agv04/cmd_vel', Twist, queue_size=10)
-        }
 
         # ROS Subscribers
         rospy.Subscriber('/agv01/amcl_pose', PoseWithCovarianceStamped, self.agv01_pose_callback)
@@ -80,40 +72,25 @@ class FleetManagement:
         self.parking_status_update = ParkingStatusUpdate(self)
 
     def agv01_pose_callback(self, msg):
-        self.agv_poses['AGV01'] = (msg.pose.pose.position.x, 
-                                   msg.pose.pose.position.y,
-                                   msg.pose.pose.position.z,
-                                   msg.pose.pose.orientation.x,
-                                   msg.pose.pose.orientation.y,
-                                   msg.pose.pose.orientation.z,
-                                   msg.pose.pose.orientation.w)
+        self.agv_poses['AGV01'] = self.extract_pose(msg)
 
     def agv02_pose_callback(self, msg):
-        self.agv_poses['AGV02'] = (msg.pose.pose.position.x, 
-                                   msg.pose.pose.position.y,
-                                   msg.pose.pose.position.z,
-                                   msg.pose.pose.orientation.x,
-                                   msg.pose.pose.orientation.y,
-                                   msg.pose.pose.orientation.z,
-                                   msg.pose.pose.orientation.w)
+        self.agv_poses['AGV02'] = self.extract_pose(msg)
 
     def agv03_pose_callback(self, msg):
-        self.agv_poses['AGV03'] = (msg.pose.pose.position.x, 
-                                   msg.pose.pose.position.y,
-                                   msg.pose.pose.position.z,
-                                   msg.pose.pose.orientation.x,
-                                   msg.pose.pose.orientation.y,
-                                   msg.pose.pose.orientation.z,
-                                   msg.pose.pose.orientation.w)
+        self.agv_poses['AGV03'] = self.extract_pose(msg)
 
     def agv04_pose_callback(self, msg):
-        self.agv_poses['AGV04'] = (msg.pose.pose.position.x, 
-                                   msg.pose.pose.position.y,
-                                   msg.pose.pose.position.z,
-                                   msg.pose.pose.orientation.x,
-                                   msg.pose.pose.orientation.y,
-                                   msg.pose.pose.orientation.z,
-                                   msg.pose.pose.orientation.w)
+        self.agv_poses['AGV04'] = self.extract_pose(msg)
+        
+    def extract_pose(self, msg):
+        return (msg.pose.pose.position.x, 
+                msg.pose.pose.position.y,
+                msg.pose.pose.position.z,
+                msg.pose.pose.orientation.x,
+                msg.pose.pose.orientation.y,
+                msg.pose.pose.orientation.z,
+                msg.pose.pose.orientation.w)
         
     def ros_subscribe_agv_status(self, msg):
         rospy.loginfo(f"Fleet Received AGV status: {msg.data}")
@@ -309,14 +286,12 @@ class FleetManagement:
 
     def ros_subscribe_detection(self, msg, agv_name):
         self.detections[agv_name] = [box for box in msg.bounding_boxes if box.Class in ["people", "box"]]
-        if self.detections[agv_name]:
-            rospy.Timer(rospy.Duration(2), self.publish_object_detection)
-        else:
+        self.publish_object_detection()
+        if not self.detections[agv_name]:
             self.detections.pop(agv_name, None)
         
     def publish_object_detection(self, event=None):
         if not self.detections:
-            rospy.loginfo("No detections available.")
             return
 
         detections_msg = ""
