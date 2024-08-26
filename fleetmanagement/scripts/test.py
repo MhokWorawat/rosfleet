@@ -24,7 +24,7 @@ class TimeTracker:
 
         self.mission_sub = rospy.Subscriber('/mission', String, self.ros_subscribe_mission, queue_size=100)
         self.task_sub = rospy.Subscriber('/task', String, self.ros_subscribe_task, queue_size=100)
-        self.agv01_velocity_sub = rospy.Subscriber('/agv01/Velocity', Twist, self.ros_subscribe_agv_velocity, queue_size=100)
+        self.agv01_velocity_sub = rospy.Subscriber('/agv02/Velocity', Twist, self.ros_subscribe_agv_velocity, queue_size=100)
 
         rospy.on_shutdown(self.shutdown_hook)
 

@@ -61,9 +61,9 @@ class FleetManagementUI:
         }
         self.start_agv_coordinates = {
             'AGV01': (1.050, -9.700, 0.000, 0.000, 0.000, 0.000, 1.000),
-            'AGV02': (17.900, -7.800, 0.000, 0.000, 0.000, -0.707, 0.707),
-            'AGV03': (1.050, -1.000, 0.000, 0.000, 0.000, 0.000, 1.000),
-            'AGV04': (1.050, -9.700, 0.000, 0.000, 0.000, 0.000, 1.000)
+            'AGV02': (1.050, -1.000, 0.000, 0.000, 0.000, 0.000, 1.000),
+            'AGV03': (24.700, -9.750, 0.000, 0.000, 0.000, 1.000, 0.000),
+            'AGV04': (17.900, -7.800, 0.000, 0.000, 0.000, -0.707, 0.707)
         }
         self.emergency_status = {
             'AGV01': False,
@@ -94,8 +94,12 @@ class FleetManagementUI:
 
         rospy.Subscriber('/task', String, self.ros_subscribe_task)
         rospy.Subscriber('/agv_status', String, self.ros_subscribe_agv_status)
-        rospy.Subscriber('/object_detection', String, self.ros_subscribe_object_detection)
+        # rospy.Subscriber('/object_detection', String, self.ros_subscribe_object_detection)
         rospy.Subscriber('/counter', Int32, self.ros_subscribe_counter)
+        self.check_timer = rospy.Timer(rospy.Duration(5), self.check_obstacle_timeout)
+
+        self.has_new_data = False
+        self.obstacle = []
 
         # ros_Publisher
         self.agv_status_pub = rospy.Publisher('/agv_status', String, queue_size=10, latch=True)
@@ -123,11 +127,6 @@ class FleetManagementUI:
         self.periodic_battery_update()
         self.update_emergency_status()
         self.update_mission_counter()
-
-        self.detection_coords = {'AGV01': {}, 'AGV02': {}, 'AGV03': {}, 'AGV04': {}}
-        self.detection_images = []
-        self.detection_x = 436
-        self.detection_y = 870
     
     def shutdown_ui(self):
         try:
@@ -726,23 +725,28 @@ class FleetManagementUI:
             self.emergency_status[agv_name] = False
 
     def ros_subscribe_object_detection(self, msg):
+        self.has_new_data = True
+
         detections = msg.data.split(' | ')
-        agv_names = ["AGV01", "AGV02", "AGV03", "AGV04"]
+        agv_names = ["AGV02"]
         obstacle = []
 
-        for i, detection in enumerate(detections):
-            if i >= len(agv_names):
-                break
+        for detection in detections:
+            if ' : ' in detection:
+                agv_name, objects_str = detection.split(' : ', 1)
+                agv_name = agv_name.strip()
+                objects_str = objects_str.strip()
+                
+                if agv_name in agv_names:
+                    detected_objects = [obj for obj in objects_str.split(', ') if obj in ["people", "box"]]
+                    if detected_objects:
+                        obstacle.extend([(agv_name, obj) for obj in detected_objects])
 
-            agv_name, objects_str = detection.split(' : ', 1)
-            agv_name = agv_name.strip()
-            objects_str = objects_str.strip()
-
-            if objects_str:
-                detected_objects = [obj for obj in objects_str.split(', ') if obj in ["people", "box"]]
-                obstacle.extend([(agv_name, obj) for obj in detected_objects])
-
-        self.update_obstacle_notifications(obstacle)
+        if obstacle:
+            self.obstacle = obstacle
+        else:
+            self.obstacle = []
+        self.update_obstacle_notifications(self.obstacle)
 
     def update_obstacle_notifications(self, obstacle):
         obstacle_images = {
@@ -769,9 +773,15 @@ class FleetManagementUI:
                     self.canvas.create_image(pos_x, pos_y, image=image, anchor="nw", tags=obstacle_tag)
                     self.draw_text(pos_x + 148, pos_y + 9, f"{agv_name}", size=11, color="black", weight="normal", tag=agv_tag)
             else:
-                break
+                self.canvas.delete(obstacle_tag)
+                self.canvas.delete(agv_tag)
 
-        rospy.sleep(0.5)
+        self.has_new_data = False
+
+    def check_obstacle_timeout(self, event):
+        if not self.has_new_data:
+            self.obstacle = []
+            self.update_obstacle_notifications(self.obstacle)
     
     def ros_subscribe_counter(self, msg):
         self.mission_counter = msg.data
