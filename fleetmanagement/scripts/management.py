@@ -113,6 +113,8 @@ class AGV_management:
             self.send_goal(target_coords)
             self.wait_for_arrival(target_coords)
             rospy.sleep(3)
+            self.agv_status[agv_index] = "Available"
+            self.publish_agv_status()
             self.request_parking_pub.publish(self.agv_name)
 
     def closest_parking_callback(self, msg):
@@ -161,7 +163,7 @@ class AGV_management:
 
             self.estimated_time_pub.publish(self.estimated_time)
 
-            if distance < 0.2:
+            if distance < 0.3:
                 rospy.loginfo(f"{self.agv_name} arrived at target.")
                 self.estimated_time = 0.0
                 self.estimated_time_pub.publish(self.estimated_time)

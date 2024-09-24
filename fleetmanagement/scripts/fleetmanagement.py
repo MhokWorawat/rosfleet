@@ -32,6 +32,12 @@ class FleetManagement:
             'P3': [],
             'P4': []
         }
+        self.emergency_status = {
+            'AGV01': False,
+            'AGV02': False,
+            'AGV03': False,
+            'AGV04': False
+        }
         self.station_coordinates = {
             'A': (2.900, -6.500, 0.000, 0.000, 0.000, 0.707, 0.707),
             'B': (7.950, -1.000, 0.000, 0.000, 0.000, 0.000, 1.000),
@@ -67,6 +73,12 @@ class FleetManagement:
             'AGV02': rospy.Subscriber('/agv02/yolov5/detections', BoundingBoxes, self.ros_subscribe_detection, 'AGV02'),
             'AGV03': rospy.Subscriber('/agv03/yolov5/detections', BoundingBoxes, self.ros_subscribe_detection, 'AGV03'),
             'AGV04': rospy.Subscriber('/agv04/yolov5/detections', BoundingBoxes, self.ros_subscribe_detection, 'AGV04')
+        }
+        self.emergency_subscribers = {
+            'AGV01': rospy.Subscriber('/agv01/Emergen', String, self.ros_subscribe_emergency, 'AGV01'),
+            'AGV02': rospy.Subscriber('/agv02/Emergen', String, self.ros_subscribe_emergency, 'AGV02'),
+            'AGV03': rospy.Subscriber('/agv03/Emergen', String, self.ros_subscribe_emergency, 'AGV03'),
+            'AGV04': rospy.Subscriber('/agv04/Emergen', String, self.ros_subscribe_emergency, 'AGV04')
         }
 
         self.parking_status_update = ParkingStatusUpdate(self)
@@ -117,7 +129,7 @@ class FleetManagement:
     def select_agv_for_task(self, selected_agv, station_first, station_last):
         available_agvs = []
         for i, status in enumerate(self.agv_status):
-            if status == "Available":
+            if status == "Available" and self.emergency_status[f'AGV{i + 1:02}'] == False:
                 available_agvs.append(f'AGV{i + 1:02}')
 
         rospy.loginfo(f"Available AGVs: {available_agvs}")
@@ -176,10 +188,10 @@ class FleetManagement:
             rospy.loginfo(f"Invalid AGV name: {agv_request}")
             return
 
-        if self.agv_status[agv_index] == "Go to Last Station":
-            self.select_park_for_agv(agv_request)
-        else:
-            rospy.loginfo(f"{agv_request} requested parking, but the status is not 'Go to Last Station'")
+        # if self.agv_status[agv_index] == "Go to Last Station":
+        #     self.select_park_for_agv(agv_request)
+        # else:
+        #     rospy.loginfo(f"{agv_request} requested parking, but the status is not 'Go to Last Station'")
 
     def select_park_for_agv(self, agv_request):
         empty_parks = [f'P{i + 1:01}' for i, status in enumerate(self.parking_status_update.station_status.values()) if status == "Empty"]
@@ -232,6 +244,13 @@ class FleetManagement:
         pose_stamped.pose.orientation.z = pose[5]
         pose_stamped.pose.orientation.w = pose[6]
         return pose_stamped
+    
+    def ros_subscribe_emergency(self, msg, agv_name):
+        if msg.data == 'on':
+            self.emergency_status[agv_name] = True
+            
+        elif msg.data == 'off':
+            self.emergency_status[agv_name] = False
 
     def calculate_path_length(self, start, goal, namespace):
         service_name = f'/{namespace}/move_base/make_plan'

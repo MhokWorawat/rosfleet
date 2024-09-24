@@ -164,15 +164,15 @@ class FleetManagementUI:
                         else:
                             print("Management process terminated with SIGTERM.")
 
-            # # Kill all nodes except /rosout
-            # nodes = subprocess.check_output(['rosnode', 'list']).decode().split()
-            # for node in nodes:
-            #     if node != '/rosout':
-            #         os.system(f'rosnode kill {node}')
+            # Kill all nodes except /rosout
+            nodes = subprocess.check_output(['rosnode', 'list']).decode().split()
+            for node in nodes:
+                if node != '/rosout':
+                    os.system(f'rosnode kill {node}')
             
-            # # Run rosnode cleanup to remove stale nodes
-            # subprocess.check_call('echo y | rosnode cleanup', shell=True)
-            # time.sleep(1)
+            # Run rosnode cleanup to remove stale nodes
+            subprocess.check_call('echo y | rosnode cleanup', shell=True)
+            time.sleep(1)
 
             node_names = subprocess.check_output(['rosnode', 'list']).decode('utf-8').split('\n')
             if '/rosout' not in node_names:
@@ -721,6 +721,7 @@ class FleetManagementUI:
     def ros_subscribe_emergency(self, msg, agv_name):
         if msg.data == 'on':
             self.emergency_status[agv_name] = True
+            
         elif msg.data == 'off':
             self.emergency_status[agv_name] = False
 
