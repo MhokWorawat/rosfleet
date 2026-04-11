@@ -170,17 +170,10 @@ To make this repository look more professional:
 9. Add architecture and topic-flow diagrams
 10. Pin 1–2 best screenshots in the README
 
-## License
-
-Please choose and add a license file, such as MIT, Apache-2.0, or BSD-3-Clause, depending on how you want others to use your work.
-
 ## Author
-
-**Worawat Naowan**
 
 * Mechatronics Engineer
 * Focused on Robotics, Automation, and AGV Fleet Management
-* GitHub: [MhokWorawat](https://github.com/MhokWorawat)
 
 ---
 
